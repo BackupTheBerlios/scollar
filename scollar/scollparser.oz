@@ -1,31 +1,15 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Copyright (c) 2008 Fred Spiessens - Evoluware http://www.evoluware.eu
 %%
-%%
-%%  -- LICENSE (MIT STYLE) --
-%% Permission is hereby granted, free of charge, to any person
-%% obtaining a copy of this software and associated documentation
-%% files (the "Software"), to deal in the Software without
-%% restriction, including without limitation the rights to use,
-%% copy, modify, merge, publish, distribute, sublicense, and/or sell
-%% copies of the Software, and to permit persons to whom the
-%% Software is furnished to do so, subject to the following
-%% conditions:
-%%
-%% The above copyright notice and this permission notice shall be
-%% included in all copies or substantial portions of the Software.
-%%
-%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-%% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-%% OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-%% NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-%% HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-%% WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-%% OTHER DEALINGS IN THE SOFTWARE.
-%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+% author : Fred Spiessens & Yves Jaradin
+% 
+%
+% changes 
+% - 23-Dec-2006 fred : syntax now supports:may.do(B,X) in system rules
+% - 26-Nov-2007 fred : error msg now includes line and col numbers
+% - 26-Jun-2008 fred : "permission" replaced by "state"
+%
+%
+%
+%%%%%%%%%
 functor
 export ScollParse  ToKernel  Analyze
 define
@@ -130,7 +114,6 @@ define
 
 
    fun{ScollParse Str}
-      %Tokens = {RemoveComments {ScollTokenize Str} false}  % fsp: BUG ...? RemoveComments is called twice for no reason??
       Tokens = {ScollTokenize Str}
    in      program('declare':{ParseDeclare {FromTo Tokens "declare" "system"}}
 		   system: {ParseSystem {FromTo Tokens "system" "behavior"}}
@@ -149,16 +132,16 @@ define
    end
 
    fun{ParseDeclare Tokens}
-      Perm =  {FromTo Tokens "permission" "behavior"}
+      State =  {FromTo Tokens "state" "behavior"}
       Beh =  {FromTo Tokens "behavior" "knowledge"}
       Know = {FromTo Tokens "knowledge" "system"}
-      {ForAll [Perm Beh Know] proc{$ Lst}
+      {ForAll [State Beh Know] proc{$ Lst}
 				 try Lst.2.1.chars=":"
 				 catch _ then raise 'forgot colon in declare part'(line:Lst.2.1.line col:Lst.2.1.col) end
 				 end
 			      end}
    in 
-      'declare'(permission: {ParseDecl Perm.2.2}
+      'declare'(state: {ParseDecl State.2.2}
 		behavior: {ParseDecl Beh.2.2}
 		knowledge:{ParseDecl Know.2.2})
    end

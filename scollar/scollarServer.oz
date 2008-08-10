@@ -1,40 +1,13 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Copyright (c) 2008 Fred Spiessens - Evoluware http://www.evoluware.eu
-%%
-%%
-%%  -- LICENSE (MIT STYLE) --
-%% Permission is hereby granted, free of charge, to any person
-%% obtaining a copy of this software and associated documentation
-%% files (the "Software"), to deal in the Software without
-%% restriction, including without limitation the rights to use,
-%% copy, modify, merge, publish, distribute, sublicense, and/or sell
-%% copies of the Software, and to permit persons to whom the
-%% Software is furnished to do so, subject to the following
-%% conditions:
-%%
-%% The above copyright notice and this permission notice shall be
-%% included in all copies or substantial portions of the Software.
-%%
-%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-%% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-%% OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-%% NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-%% HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-%% WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-%% OTHER DEALINGS IN THE SOFTWARE.
-%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 functor
 import
-   Open FD Space OS Application
+   Open FD Space OS % Application
    System(show:Show showInfo:ShowInfo)
    Property
    DotGraph at 'dotgraph.ozf'
    ScollParser(scollParse:ScollParse toKernel:ToKernel) at 'scollparser.ozf'
    ScollarSearch at 'scollarSearch.ozf'
    Inspector(inspect:Inspect)
-   
+   %ScollarProgress(newBar:NewBar) at 'scollarProgress.ozf'
 define
    %DataDir = '/ozdevel/scollar/data/'
    \insert scollarcore.oz
@@ -58,8 +31,8 @@ define
       {MapInd ListOfBinaryPredLabels fun{$ I _} if I =< Nmbr then DefaultDotColors.I else gray end
 				     end}
    end
-   fun{GetBinaryPermissions ParsedPattern} % returnlist of labels of binary permissions predicates in ParsedPattern
-      {Map {Filter ParsedPattern.'declare'.permission
+   fun{GetBinaryStates ParsedPattern} % returnlist of labels of binary state predicates in ParsedPattern
+      {Map {Filter ParsedPattern.'declare'.state
 	    fun{$ Prd} Prd.arity == 2 end}
        fun{$ Prd} Prd.label end}
    end
@@ -72,7 +45,7 @@ define
       try Prog  = {VirtualString.toString Pattern}
 	 Problem = {ToKernel {ScollParse Prog}}  % should still be checked for grammar.
 	 ProblemCell := Problem
-	 {Inspect Problem}
+	 %{Inspect Problem}
 	 %Message = nil
 	 OK = true
 	 % {Inspect Problem}
@@ -88,7 +61,7 @@ define
    in
       if {ParsePattern Pattern ?_ ?Message}
       %if {ParsePattern Pattern {Inspect} ?Message}
-      then "<reply>\nOK\n</reply>\n"
+      then "<reply><check>\nOK\n</reply>\n"
       else {Flatten ["<error>\n"
 		     {ErrorMsg Message}
 		     "\n</error>\n"]}
@@ -102,7 +75,7 @@ define
       end
    end
       
-   fun{Process RequestAndData}% TimeOut}   % !!! CODE VULNERABLE FOR WINDOWS AND MAC LINE ENDINGS??
+   proc{Process RequestAndData}% TimeOut}   % !!! CODE VULNERABLE FOR WINDOWS AND MAC LINE ENDINGS??
       % RequestAndData: first line contains request and options, all separated by a single space
       %                 following lines contain data argument
       % example: "sols 1 10000\ndeclare ..... 
@@ -112,34 +85,41 @@ define
       %{Inspect RequestAndData}
       Arguments = {String.tokens Request & }
       case Arguments
-      of ["check"] then {CheckSyntax Data}
+      of ["check"] then {ReplyResult {CheckSyntax Data}}
+      [] ["status"] then skip % status is given automatically
       [] ["fixpts"] then
 	 FixptCell := fixpoints(min:nil max:nil)
-	 {FixPts Data}
-      [] ["sol1" RD TO]  then if {String.isInt RD} andthen {String.isInt TO} % Arguments = ["sol1" RecomputationDistance TimeOutInMillisec]
-			      then
-				 SolutionsCell := empty
-				 {Solve one Data {String.toInt RD} {String.toInt TO}}
-			      else {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}
-			      end
-      [] ["sols" RD TO]  then if {String.isInt RD} andthen {String.isInt TO} % Arguments = ["sol1" RecomputationDistance TimeOutInMillisec]
-			      then
-				 SolutionsCell := empty
-				 {Solve all Data {String.toInt RD} {String.toInt TO}}
-			      else {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}
-			      end
+	 {ReplyResult {FixPts Data}}
+      [] ["sol1" TO]  then
+	 if {String.isInt TO} % Arguments = ["sol1" RecomputationDistance TimeOutInMillisec]
+	 then
+	    SolutionsCell := empty
+	    {ReplyResult {Solve one Data {String.toInt TO}}}
+	 else
+	    {ReplyResult {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}}
+	 end
+      [] ["sols" TO]  then
+	 if {String.isInt TO} % Arguments = ["sol1" RecomputationDistance TimeOutInMillisec]
+	 then
+	    SolutionsCell := empty
+	    {ReplyResult {Solve all Data  {String.toInt TO}}}
+	 else
+	    {ReplyResult {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}}
+	 end
       [] ["show" SolutionNumber] then if {String.isInt SolutionNumber}
-			 then {ShowSolution {String.toInt SolutionNumber}}
-			 else {ErrorMsg "expected integer argument SolutionNumber"}
-		      end
-      else {ErrorMsg "unknown action requested"}
+				      then {ReplyResult  {ShowSolution {String.toInt SolutionNumber}}}
+				      else {ReplyResult  {ErrorMsg "expected integer argument SolutionNumber"}}
+				      end
+      else {ReplyResult {ErrorMsg "unknown action requested"}}
       end
    end
 
    
-   fun{ProcessControl ControlMsg}
-      "contol ok \n"
-   end
+%    fun{ProcessControl ControlMsg}
+%       {ShowInfo 'inProcessControl'}
+%       @InterruptCell=unit
+%       "message arrived in Oz process OK\n"
+%    end
 
    fun{FixPts Pattern}
       Problem ParserMsg
@@ -156,11 +136,11 @@ define
 	    try MaxFp = nil catch _ then skip end
 	 end
 	 if MinFp \= nil andthen MaxFp \= nil then FixptCell := fixpoints(min:MinFp max:MaxFp) end
-	 %{Inspect @FixptCell}
+ 	 %{Inspect @FixptCell}
 	 if {IsDet Err} then
 	    {ErrorMsg 'fixpoint calculation went wrong'(Err)}
 	 else try
-		 ArcLabels = {GetBinaryPermissions Problem}
+		 ArcLabels = {GetBinaryStates Problem}
 	      in
 		 {FixpointsReply MinFp MaxFp ArcLabels {DotColorsFor ArcLabels}}
 	      catch E then
@@ -171,7 +151,7 @@ define
    end					   
 
    
-   fun{Solve OneOrAll Pattern CalcDist TimeOut }
+   fun{Solve OneOrAll Pattern TimeOut}
       Problem ParserMsg Response
    in
       if {ParsePattern Pattern ?Problem ?ParserMsg} == false
@@ -180,9 +160,14 @@ define
 	 TimeTaken All Good Completed
 	 Time1 = {OS.time}
       in
-	 try {CalculateSolutions
-	      Problem OneOrAll CalcDist Time1 TimeOut TimeTaken All Good Completed}
-	    %{ShowInfo "CalculatingSolutionsInterop done"}
+	 try
+	    {ShowInfo  "trying to initiate progress"}
+	    InterruptCell := _
+	    {ResetSolCnt}
+	    % ProgressBarCell := {NewBar @InterruptCell}
+	    %{ShowInfo  "initiated progress bar"}
+	    {CalculateSolutions
+	     Problem OneOrAll Time1 TimeOut TimeTaken All Good Completed}
 	    SolutionsCell := Good
 	    %{Inspect SolutionsCell}
 	    %{Inspect Good}
@@ -191,14 +176,18 @@ define
 	 end
 	 if {Not {IsDet Response}}
 	 then  Response = try
-			     ArcLabels = {GetBinaryPermissions Problem}
+			     ArcLabels = {GetBinaryStates Problem}
 			  in
 			     {SolutionsReply TimeTaken {List.length All} Good Completed ArcLabels {DotColorsFor ArcLabels} }
 			  catch E then {ErrorMsg 'trouble marshalling solution(s)'#(E)}
 			  end
 	 end
+	 %{ReportProgress {Pow 2 ProgressReportDepth}}
+	 %if {Not @ProgressBarCell == nil} then {@ProgressBarCell setRatio(64 64)} end
+	 %ProgressBarCell := nil
       end
       %{ShowInfo Response}
+      %@EndOfControlSignalCell=unit
       Response
    end
 
@@ -207,82 +196,146 @@ define
       then 
 	 {ErrorMsg "was asked to show non-existing solution "#I}
       else
-	 ArcLabels = {GetBinaryPermissions @ProblemCell}
+	 ArcLabels = {GetBinaryStates @ProblemCell}
       in
 	 {ShowSolutionReply I @SolutionsCell ArcLabels {DotColorsFor ArcLabels}}
       end
    end
    
-   proc{ServeRequestsAndControl RequestsSocket ControlSocket} % synchronous communication: receive + reply
-     %  {RequestsSocket flush} % fs added for testing 3 maart 2008
+   proc{ServeRequest}
       Request
       L
-      Reply
-      ControlSignal
+      %Reply
    in
-      Request = {RequestsSocket read(list:$
-				     size:4096
-				     len:L)}
+      Request = {ServerSocket read(list:$
+				   size:4096
+				   len:L)}
       {Show 'Length Request'(L)}
-      {RequestsSocket flush}
       {Wait Request}
-      thread {ServeControl ControlSocket ControlSignal} end
-      Reply = {Process Request}
-      ControlSignal=unit % stop calculation control, reply is ready
-      if Reply == endOfCommunication
-      then
-	 {RequestsSocket close}
-	 {ControlSocket close}
-      else {RequestsSocket write(vs:Reply)} % java side uses socket.readLine()
-	 {RequestsSocket flush}
-	 {ServeRequestsAndControl RequestsSocket ControlSocket}
-      end
+      {Process Request}
+%       if Reply == endOfCommunication
+%       then
+% 	 {RequestsSocket close}
+%       else {ReplyResult Reply}
+%       end
    end
 
 
-   proc{ServeControl ControlSocket EndOfControlSignal} % synchronous communication: receive + reply
+   proc{ServeControl} % only incoming
+      ControlMsg
       L
-      ControlMsg 
-      ControlReply
    in
       ControlMsg = {ControlSocket read(list:$
 				       size:4096
 				       len:L)}
-      {Show 'Length Control Message'(L)}
-      {ControlSocket flush}
-      case {Record.waitOr r(EndOfControlSignal ControlMsg)}
-      of 1 then skip % no more control msgs to be expected for current calculation
-      [] 2 then
-	 thread ControlReply = {ProcessControl ControlMsg} end
-	 case {Record.waitOr r(EndOfControlSignal ControlReply)}
-	 of 1 then skip % new calculation overrides control msg currently being processed
-	 [] 2 then 
-	    {ControlSocket write(vs:ControlReply)} % java side uses socket.readLine()
-	    {ControlSocket flush}
-	    {ServeControl ControlSocket EndOfControlSignal}
-	 end
-      end
+      {Show 'Length Control Msg'(L)}
+      {Wait ControlMsg}
+      if ControlMsg == "interrupt\n" then @InterruptCell = unit end
+      if ControlMsg \= "endOfControl\n" then {ServeControl} end
    end
 
-   ServerSocket
-   ServerPort
-   ControlSocket
-   ControlPort
-   %JarLocation = {Append {OS.dir} "swingscollar.jar"}
-in
+
+%     proc{ServeControl ControlSocket} % asynchronous communication: possible replies should go via global ControlReportPort
+%        L
+%        ControlMsg 
+%        ControlReply
+%     in
+%        ControlMsg = {ControlSocket read(list:$
+%  				       size:4096
+%  				       len:L)}
+%        {Show 'Length Control Message'(L)}
+%        %{ControlSocket flush}
+%        %{ShowInfo 'control socket flushed'}
+%        case {Record.waitOr r(@EndOfControlSignalCell ControlMsg)}
+%        of 1 then {ShowInfo 'end-of-control-signal received'}
+%  	 skip % no more control msgs to be expected for current calculation
+%        [] 2 then
+%  	 thread {ShowInfo 'will proces control msg now'}
+%  	    ControlReply = {ProcessControl ControlMsg}
+%  	    {ShowInfo 'control msg processed'}
+%  	 end
+%  	 case {Record.waitOr r(@EndOfControlSignalCell ControlReply)}
+%  	 of 1 then {ShowInfo 'End-Of-Control-Signal received (2)'}
+%  	    skip % new calculation overrides control msg currently being processed
+%  	 [] 2 then
+%  	    {ShowInfo 'now ready for next control signal'}
+%  	    {Port.send ControlReportPort ControlReply}
+%  	    {ServeControl ControlSocket}
+%  	 end
+%        end
+%     end
+
+ %    proc {StartControlReportPort ControlSocket}
+%        thread
+%  	 for Msg in ControlReportStream
+%  	 do
+%  	    {ControlSocket write(vs:Msg)} % java side uses socket.readLine()
+%  	    {ShowInfo "control message \""#Msg#"\" was sent on control socket"}
+%  	    %{ControlSocket flush}
+%  	 end
+%        end
+%     end
+   
+  % ProgressBarCell = {NewCell nil}
+   InterruptCell = {NewCell _}
+   ServerSocket     ControlSocket
+   ServerPortNumber ControlPortNumber
+   ReplyStatus
+   ReplyResult
+   ResetSolCnt
+   AddSolCnt
+in   
+   local S P = {NewPort S}
+      SolCnt = {NewCell 0}
+   in
+      thread
+	 for Msg in S do
+	    case Msg
+	    of result#Vs then
+	       {ServerSocket write(vs:Vs)}
+	       {ServerSocket flush}
+	       {ServeRequest}
+	    [] status#Vs then
+	       {ServerSocket write(vs:"<reply><status>\n"#{VirtualString.toString Vs}#"\n</reply>\n")}
+	       {ServerSocket flush}
+	    [] resetSolCnt then
+	       SolCnt := 0
+	    [] addSolCnt then
+	       Str =  {VirtualString.toString (@SolCnt+1)#" solution"#if @SolCnt==0 then "" else "s" end#" found"}
+	    in
+	       SolCnt := @SolCnt + 1
+	       {ServerSocket write(vs:"<reply><status>\n"#Str#"\n</reply>\n")}
+	       {ServerSocket flush}
+	    end
+	 end
+      end
+      proc{ReplyStatus Vs}
+	 {Port.send P status#Vs}
+      end
+      proc{ReplyResult Vs}
+	 {Port.send P result#Vs}
+      end
+      proc{ResetSolCnt}
+	 {Port.send P resetSolCnt}
+      end
+      proc{AddSolCnt}
+	 {Port.send P addSolCnt}
+      end
+   end
    ServerSocket={New Open.socket init}
-   ServerPort={ServerSocket bind(port:$)}
+   ServerPortNumber={ServerSocket bind(port:$)}
    {ServerSocket listen}
    ControlSocket={New Open.socket init}
-   ControlPort={ControlSocket bind(port:$)}
+   ControlPortNumber={ControlSocket bind(port:$)}
    {ControlSocket listen}
    {New Open.pipe
     init(cmd: "java"
-	 args: ["-jar" "swingscollar.jar" ServerPort ControlPort]  
+	 args: ["-jar" "swingscollar.jar" ServerPortNumber ControlPortNumber]
 	 pid:  _)
     _ /*JavaGui*/}
    {ServerSocket accept(host: _/*H*/ port:_/*P*/)}
    {ControlSocket accept(host: _/*H*/ port:_/*P*/)}
-   {ServeRequestsAndControl ServerSocket ControlSocket}
-   {Application.exit 1}
+   thread {ServeControl} end
+   {ServeRequest} 
+   %{Application.exit 1}
 end

@@ -1,30 +1,3 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Copyright (c) 2008 Fred Spiessens - Evoluware http://www.evoluware.eu
-%%
-%%
-%%  -- LICENSE (MIT STYLE) --
-%% Permission is hereby granted, free of charge, to any person
-%% obtaining a copy of this software and associated documentation
-%% files (the "Software"), to deal in the Software without
-%% restriction, including without limitation the rights to use,
-%% copy, modify, merge, publish, distribute, sublicense, and/or sell
-%% copies of the Software, and to permit persons to whom the
-%% Software is furnished to do so, subject to the following
-%% conditions:
-%%
-%% The above copyright notice and this permission notice shall be
-%% included in all copies or substantial portions of the Software.
-%%
-%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-%% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-%% OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-%% NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-%% HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-%% WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-%% OTHER DEALINGS IN THE SOFTWARE.
-%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 fun{CompareStr X Y}
    XX = {List.last {String.tokens X &>}} % example X : <OPTION VALUE="caretaker.10890737">(*) caretaker
    YY = {List.last {String.tokens Y &>}}
@@ -149,7 +122,7 @@ fun{SolutionsReply TTime Nmbr GoodSolutions Completed ArcPreds Colors}
    GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph GoodSolutions GoodSolutions ArcPreds Colors}#"\n</jpg>\n"}
 in
    {Flatten
-    [ "<reply>\n"
+    [ "<reply><sol>\n"
       {VirtualString.toString CompletedV}
       {VirtualString.toString NumberV}
       GraphReply
@@ -318,23 +291,116 @@ fun{PrefixForPred Pred Conf}
    end
 end
 
+fun{SubjectConstantLabel2text Subj Ar Conf ValStr}
+   PredArgs={Flatten
+	     {VirtualString.toString Subj.name}|{Map {List.number 1 (Ar.2)-1 1}
+						 fun{$ _}  ",_"
+						 end}}
+in
+   {Append {Flatten {VirtualString.toString (Ar.1)#"("#PredArgs#")"}|
+	    {Map {List.number 1 Conf.size 1}
+	     fun{$ _} {VirtualString.toString "\t"#ValStr}
+	     end}
+	   }
+    "\n"}
+   
+end
 
-fun{SubjectRows2text Subj Ar Conf}  % Ar is tuple access#2#k or 'may.accept'#1#b 
+fun{SubjectEnumLabel2text Ar MaxConf MinEnum Enum FixptBool}
+   Dummy = {NewName}
+   EnumLst = if {IsList Enum} then Enum else MinEnum end
+   Enum2 = {Map
+	    EnumLst
+	    fun{$ X} X#{Record.adjoinAt X Ar.2 Dummy} end}
+   RowEnum = {Map {FoldL Enum2 fun{$ Filtered X#Mod}
+				  if {List.some Filtered fun{$ _#Mod2}
+							    Mod == Mod2 end}
+				  then Filtered
+				  else X#Mod|Filtered
+				  end
+			       end
+		   nil}
+	      fun{$ X#_} X end}
+in
+   {Map RowEnum
+    fun{$ Prd}  
+       PredArgs={Flatten
+		 {VirtualString.toString Ar.1}|"("|
+		 {MapInd {Record.toList Prd}
+		  fun{$Ind I} 
+		     if Ind < Ar.2
+		     then {Append
+			   {VirtualString.toString MaxConf.subjectNames.I}
+			   ","}
+		     else "_)"
+		     end
+		  end}}
+    in
+       {Append
+	{Flatten {VirtualString.toString PredArgs}|
+	 {Map {List.number 1 MaxConf.size 1}
+	  fun{$ SubjId}
+	     Prd2 = {Record.adjoinAt Prd Ar.2 SubjId}
+	     Val1 =
+	     if FixptBool then
+		if {IsList MinEnum} andthen {Member Prd2 MinEnum} then 1
+		elseif {IsList Enum} andthen {Not {Member Prd2 Enum}} then 0
+		else "0>1" % at least one of them is supposed to be a list !
+		end
+	     else
+		if {Member Prd2 Enum} then 1 else 0 end
+	     end
+	  in
+	     {VirtualString.toString  "\t"#{PrefixForPred Prd2 MaxConf}#Val1}
+	  end}}
+	"\n"}
+    end
+   }
+end
+
+fun{SubjectRows2text Subj Ar Conf}  % Ar is tuple access#2#k or 'may.accept'#1#b
+   % for concise representation: we should check first whether consecutive sets of predicates have the same fixed value
    Permuts = {Permute (Ar.2)-2 {Width Conf.subjects}}
+   Det
    %{Inspect 'Permuts'#Permuts}
 in
+   % for concise representation: we should check first whether consecutive sets of predicates have the same fixed value
+   Det = {IsDet Subj.(Ar.1)}
+   if Det andthen (Subj.(Ar.1) == 0 orelse Subj.(Ar.1) == nil)
+   then {SubjectConstantLabel2text Subj Ar  Conf "0"}
+   elseif Det andthen Subj.(Ar.1) == 1
+   then  {SubjectConstantLabel2text Subj Ar Conf "1"} 
+   elseif Det andthen {IsList Subj.(Ar.1)}
+   then {SubjectEnumLabel2text Ar Conf Subj.(Ar.1) Subj.(Ar.1) false} 
+   % elseif Ar.2 > 4 then ""
+   else
    {Flatten {Map Permuts
 	     fun{$ Ids}{Append {SubjectRow2text Subj Ar Ids Conf} "\n"}
 	     end}}
+   end
 end
 
-fun{SubjectRows2FixptText MinSubj MaxSubj Ar MinFp MaxFp}  % Ar is tuple access#2#k or 'may.accept'#1#b 
+fun{SubjectRows2FixptText MinSubj MaxSubj Ar MinFp MaxFp}  % Ar is tuple access#2#k or 'may.accept'#1#b
    Permuts = {Permute (Ar.2)-2 {Width MinFp.subjects}}
+   MinDet = {IsDet MinSubj.(Ar.1)}
+   MaxDet = {IsDet MaxSubj.(Ar.1)}
    %{Inspect 'Permuts'#Permuts}
 in
-   {Flatten {Map Permuts
-	     fun{$ Ids}{Append {SubjectRow2FixptText MinSubj MaxSubj Ar Ids MinFp MaxFp} "\n"}
-	     end}}
+   % for concise representation: we should check first whether consecutive sets of predicates have the same fixed value
+   if MaxDet andthen (MaxSubj.(Ar.1) == 0 orelse MaxSubj.(Ar.1) == nil)
+   then {SubjectConstantLabel2text MaxSubj Ar  MaxFp "0"}
+   elseif MinDet andthen MinSubj.(Ar.1) == 1
+   then  {SubjectConstantLabel2text MinSubj Ar MinFp "1"}
+   elseif MinDet andthen MaxDet andthen (MinSubj.(Ar.1) == 0 orelse  MinSubj.(Ar.1) == nill) andthen MaxSubj.(Ar.1) == 1
+   then {SubjectConstantLabel2text MaxSubj Ar  MaxFp "0>>1"}
+   elseif MinDet andthen MaxDet andthen ({IsList MinSubj.(Ar.1)} orelse {IsList MaxSubj.(Ar.1)})
+   then {SubjectEnumLabel2text Ar MaxFp MinSubj.(Ar.1) MaxSubj.(Ar.1) true}
+  % elseif Ar.2 > 4 then ""
+   else
+      {Flatten {Map Permuts
+		fun{$ Ids}{Append {SubjectRow2FixptText MinSubj MaxSubj Ar Ids MinFp MaxFp} "\n"}
+		end}}
+   end
 end
 
 fun{SortedArities Conf} % by type, length and name
@@ -367,9 +433,10 @@ fun{Subject2text Subj Conf} % every subject has its own Jtable
    Ars={Append {SortedArities Conf} {PrivateArities Subj}}
    %{Inspect 'Ars'#Ars}
    FirstRowText =  {SubjectFirstRow2text Subj Conf}
-   Rows = {Map Ars fun{$ A}
-		      {SubjectRows2text Subj A Conf}  % A is tuple access#2#k or 'may.accept'#1#b  
-		   end}
+   Rows = {Map {Filter Ars fun{$ A} A.2 =< 4 end}
+	   fun{$ A}
+	      {SubjectRows2text Subj A Conf}  % A is tuple access#2#k or 'may.accept'#1#b  
+	   end}
    RowsText = {Flatten Rows}
    RowCount = {Length {Filter RowsText fun{$ X} X == &\n end}}
    ColCount = {Width Conf.subjects}+1
@@ -387,9 +454,10 @@ fun{Subject2FixptText SubjId MinFp MaxFp} % every subject has its own Jtable
    MaxSubj = MaxFp.subjects.SubjId
    Ars={Append {SortedArities MinFp} {PrivateArities MinSubj}}
    FirstRowText =  {SubjectFirstRow2text MinSubj MinFp}
-   Rows = {Map Ars fun{$ A}
-		      {SubjectRows2FixptText MinSubj MaxSubj A MinFp MaxFp}  % A is tuple access#2#k or 'may.accept'#1#b  
-		   end}
+   Rows = {Map {Filter Ars fun{$ A} A.2 =< 4 end}
+	   fun{$ A}
+	      {SubjectRows2FixptText MinSubj MaxSubj A MinFp MaxFp}  % A is tuple access#2#k or 'may.accept'#1#b  
+	   end}
    RowsText = {Flatten Rows}
    RowCount = {Length {Filter RowsText fun{$ X} X == &\n end}}
    ColCount = {Width MinFp.subjects}+1
@@ -414,7 +482,7 @@ fun{FixpointsReply MinFp MaxFp ArcPreds Colors}
    GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph [MinFp MaxFp] [MinFp MaxFp] ArcPreds Colors}#"\n</jpg>\n"}
 in
    %{Inspect 'GraphReply'#{VirtualString.toAtom GraphReply}}
-   {VirtualString.toString "<reply>\nCalculated Fixpoint. \n"#GraphReply#Tables#"</reply>\n"}
+   {VirtualString.toString "<reply><fixpts>\nCalculated Fixpoint. \n"#GraphReply#Tables#"</reply>\n"}
 end
 
 fun{ShowSolutionReply Nr Solutions ArcPreds Colors}
@@ -429,6 +497,6 @@ fun{ShowSolutionReply Nr Solutions ArcPreds Colors}
 	    end
    GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph Solutions [Sol] ArcPreds Colors}#"\n</jpg>\n"}
 in
-   {VirtualString.toString "<reply>\nSolution "#Nr#"\n"#GraphReply#Tables#"</reply>\n"}
+   {VirtualString.toString "<reply><show "#Nr#">\nSolution "#Nr#"\n"#GraphReply#Tables#"</reply>\n"}
 end
 

@@ -1,30 +1,3 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% Copyright (c) 2008 Fred Spiessens - Evoluware http://www.evoluware.eu
-%%
-%%
-%%  -- LICENSE (MIT STYLE) --
-%% Permission is hereby granted, free of charge, to any person
-%% obtaining a copy of this software and associated documentation
-%% files (the "Software"), to deal in the Software without
-%% restriction, including without limitation the rights to use,
-%% copy, modify, merge, publish, distribute, sublicense, and/or sell
-%% copies of the Software, and to permit persons to whom the
-%% Software is furnished to do so, subject to the following
-%% conditions:
-%%
-%% The above copyright notice and this permission notice shall be
-%% included in all copies or substantial portions of the Software.
-%%
-%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-%% EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
-%% OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-%% NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-%% HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-%% WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-%% FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-%% OTHER DEALINGS IN THE SOFTWARE.
-%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% ADDED (AND FIXED) EXISTENTIAL QUANTIFICATION
 %% ADDED AGGREGATION
 %% REMOVED UNUSED KNOWLEDGE PREDICATES IN PREPARATION FOR EXCHANGE
@@ -61,11 +34,11 @@ MapInd = List.mapInd
 
 proc{GetSystemArities Problem  Conf}
    Conf.behaviorLabels = {Map Problem.'declare'.behavior fun{$ Decl} Decl.label end}
-   Conf.knowledgeLabels = {Map {Append Problem.'declare'.permission
+   Conf.knowledgeLabels = {Map {Append Problem.'declare'.state
 				Problem.'declare'.knowledge}
 			   fun{$ Decl} Decl.label end}
    Conf.behaviorArities = {Map Problem.'declare'.behavior fun{$ Decl} (Decl.label)#(Decl.arity) end}
-   Conf.knowledgeArities =  {Map {Append Problem.'declare'.permission
+   Conf.knowledgeArities =  {Map {Append Problem.'declare'.state
 				  Problem.'declare'.knowledge}
 			     fun{$ Decl} (Decl.label)#(Decl.arity) end}
 end
@@ -98,7 +71,11 @@ fun{GetPred Pred Conf }
 in
    if {HasFeature Subj Feat}
    then        % will make structure needed but should not block
-      thread {GetPredValue Subj.Feat {Record.toList Pred}.2} end  
+      if {IsDet Subj.Feat} andthen {IsList Subj.Feat}
+      then case {Member Pred Subj.Feat} of true then 1 [] false then 0 end
+      else
+	 thread {GetPredValue Subj.Feat {Record.toList Pred}.2} end  
+      end
    else 0      
    end
 end
@@ -152,7 +129,7 @@ fun{IsDetPred Pred Conf} % for globals!  Makes nothing needed
    Subj = Conf.subjects.(Pred.1)
 in                                          
    if {Not {HasFeature Subj Feat}} then true  % always zero! TODO: double check that all query predicates get at least feature structure
-   elseif {IsDet Subj.Feat} andthen {IsInt Subj.Feat} then true
+   elseif {IsDet Subj.Feat} andthen ({IsInt Subj.Feat} orelse {IsList Subj.Feat})then true
    else
       {IsDetPredValue Subj.Feat {Record.toList Pred}.2}
    end
@@ -161,20 +138,24 @@ fun{IsDetPredValue Val Keys}   % DOES NOT make structure needed
    case Keys                   % NEVER blocks 
    of nil then {IsDet Val}     % IS UTTERLY UNDETERMINISTIC    
    [] Key|T then              
-      {IsDet Val} andthen ({IsInt Val} orelse  {IsDetPredValue Val.Key T}) 
+      {IsDet Val} andthen ({IsInt Val} orelse  {IsList Val} orelse  {IsDetPredValue Val.Key T}) 
    end
 end
 %----  
 proc{MakeLabelNeeded Subj Lbl Ar Conf}
+   if {IsEnumeratedLabel Lbl Subj.id Conf} then skip
+   else
    %{Show 'in MakeLabelNeeded'(subjId: Subj.id lbl:Lbl ar:Ar confSize: Conf.size)}
    %{Show 'hasFeature'(subjId: Subj.id trueOrFalse:{HasFeature Subj Lbl})}
-   if {Not {HasFeature Subj Lbl}} then skip  % always zero! TODO: double check that all query predicates get at least feature structure
-   elseif {IsDet Subj.Lbl} andthen {IsInt Subj.Lbl} then skip
-   else
-      {MakePredsNeeded Subj.Lbl Ar-1 Conf.size} 
-   end
+      if {Not {HasFeature Subj Lbl}} then skip  % always zero! TODO: double check that all query predicates get at least feature structure
+      elseif {IsDet Subj.Lbl} andthen {IsInt Subj.Lbl} then skip
+      else
+	 {MakePredsNeeded Subj.Lbl Ar-1 Conf.size} 
+      end
    %{ShowInfo 'done MakeLabelNeeded'}
+   end
 end
+
 proc{MakePredsNeeded Val Depth Size}
    %{ShowInfo 'in MakePredsNeeded'}
    {Value.makeNeeded Val} % cause structure to become needed
@@ -186,30 +167,22 @@ proc{MakePredsNeeded Val Depth Size}
 	 else for I in 1 .. Size do
 		 {MakePredsNeeded Val.I Depth-1 Size}
 	      end
-	   end
+	 end
       end
    end
   % {ShowInfo 'done MakePredsNeeded'}
 end
 %----  
-proc{ForAllSubjectLabels Conf P4} % P4/4 will be called : {P Subj.id Lbl LblArity Conf}
-   {Record.forAll Conf.subjects
-    proc{$ Subj}
-       {ForAll {GetAllSubjectPredLabels Subj}
-	proc{$ Lbl}
-	   Ar =  {LabelArity Subj.id Lbl Conf}
-	in
-	   {P4 Subj Lbl Ar Conf}
-	end}
-    end}   
-end
+
 %----
 fun{IsDetPredAndEquals Pred V Conf}   % Asked only after MakeComplete was called on Conf. Structure should be complete by now
    Feat = {Label Pred}
    Subj = Conf.subjects.(Pred.1)
 in                                          
    if {Not {HasFeature Subj Feat}} then V == 0  % TODO: double check that all query predicates get at least feature structure
-   elseif {IsDet Subj.Feat} andthen Subj.Feat == V then true
+   elseif {Not {IsDet Subj.Feat}} then V == 0
+   elseif Subj.Feat == V then true
+   elseif {IsList Subj.Feat} then  {Member Pred Subj.Feat}==(V==1)
    else
       {IsDetPredValueAndEquals Subj.Feat {Record.toList Pred}.2 V}
    end
@@ -238,8 +211,16 @@ fun{GetPredAfterCalculation Pred Conf } % assume calculation is completely finis
    Subj = Conf.subjects.(Pred.1) 
 in
    if {HasFeature Subj Feat}
-   then        % will NOT  make structure needed 
-      {GetPredValueAfterCalculation Subj.Feat {Record.toList Pred}.2}
+   then        % will NOT  make structure needed
+      if {IsDet Subj.Feat} andthen {IsInt Subj.Feat} then Subj.Feat
+      elseif {IsDet Subj.Feat} andthen {IsList Subj.Feat}
+      then if {Member Pred Subj.Feat}
+	   then 1
+	   else 0
+	   end
+      else
+	 {GetPredValueAfterCalculation Subj.Feat {Record.toList Pred}.2}
+      end
    else 0      
    end
 end
@@ -265,7 +246,7 @@ fun{GetAllPreds Conf}
 		  fun{$ Lbl}
 		     {AllPredPermutations Subj.id Lbl {LabelArity Subj.id Lbl Conf} Conf.size}
 		  end}}
-      end}}
+     end}}
 end
 
 %--- SORTING THE PREDICATES TO MINIMIZE UNNECCESSARY SEARCH AND RULE INSTANCE MUTLIPLICATION
@@ -318,6 +299,91 @@ end
 
 % rule instantiation stuff -------------------------
 
+fun{GetMatchingAlternatives Facts Prd}
+   TemplateVars = {Filter {Record.toList Prd} IsAtom}
+in
+   for Fact in Facts collect:C
+   do
+      NewConstants = {Record.adjoinList vars {Map TemplateVars fun{$ Atm} Atm#_ end}}
+      Trial = {Record.map Prd fun{$ X} if {IsInt X} then X else NewConstants.X end
+			      end}
+   in
+      try
+	 Trial = Fact % unification as test
+	 {C NewConstants}
+      catch _ then skip
+      end
+   end
+end
+
+fun{GetEnumeration Lbl SubjId Conf}
+   Val = Conf.subjects.SubjId.Lbl
+in
+   if {IsDet Val} then
+      if Val == 0 then nil
+      else Val % should be list
+      end
+   else raise 'Expected a List as value in GetEnumeration' end
+      nil % should not happen
+   end
+end
+
+
+proc{TestConditionsEnumerated SortedPreds Vars Conf RuleHeadValue} % RuleHeadValue is 0#1 FD variable
+   % first condition Prd in SortedPreds is an enumerated predicate with Prd.1 instantiate (integer)
+   % it is either a NeverLabel, an AlwaysLabel or a ConfigOnlyLabel for the subject with id Prd.1
+   Prd|T = SortedPreds
+in
+   if {IsAlwaysLabel {Label Prd} Prd.1 Conf} then {TestConditions T Vars Conf RuleHeadValue}
+   else
+      MatchingAlternatives = {GetMatchingAlternatives {GetEnumeration {Label Prd} Prd.1 Conf} Prd}
+      % MatchingAlternatives is now a list of records, each specifying a valid variable binding for all unbound variables in Prd
+   in
+      if MatchingAlternatives == nil then RuleHeadValue = 0
+      elseif T == nil then RuleHeadValue = 1
+      else 
+          % existential quantification over MatchingAlternatives
+	  % HERE WE  OPTIMISE THINGS BY USING ENUMERATIONS FOR CONFIG-ONLY PREDICATES AND NEVER-PREDICATES
+	 PartialValues = {FD.tuple '#' {Length MatchingAlternatives} 0#1}
+      in
+	 {FD.sum PartialValues '>=:' RuleHeadValue} % close world
+	 {List.forAllInd MatchingAlternatives proc{$ I Alt}
+						 NewVars = {Record.adjoin Vars Alt}
+						 RemainingPreds =  {Map T
+								    fun{$ Pr} {Record.map Pr
+									       fun{$ V} if {IsInt V} then V else NewVars.V end end}
+								    end}
+					      in
+						 RuleHeadValue >=: PartialValues.I		 
+						 {TestConditions RemainingPreds NewVars Conf PartialValues.I}
+					      end}
+      end
+   end
+end
+
+
+
+fun{IsAlwaysLabel Lbl SubjId Conf}
+   Val = Conf.subjects.SubjId.Lbl
+in
+   {IsDet Val} andthen Val==1 % you should never have to wait on an alwaysLabel
+end
+
+fun{IsEnumeratedLabel Lbl SubjId Conf}
+   Val = Conf.subjects.SubjId.Lbl
+in
+   {IsDet Val} andthen {IsInt Val} orelse {IsList Val} % you should never have to wait on an alwaysLabel
+end
+
+
+fun{IsEnumeratedPred Prd Conf}
+   SubjId = Prd.1
+in
+   {IsInt SubjId} andthen  {IsEnumeratedLabel {Label Prd} SubjId Conf}
+end
+
+
+
 % We defer existential quantification until it is needed for the first Pred !
 proc{TestConditions RawPreds Vars Conf RuleHeadValue} % RuleHeadValue is 0#1 FD variable
    % for optimisation: sort so that first the predicates that have less non-instantiated arguments or not-yet-determined values are tested
@@ -326,61 +392,69 @@ proc{TestConditions RawPreds Vars Conf RuleHeadValue} % RuleHeadValue is 0#1 FD 
 in
    case Preds
    of Prd|T then
-      NextVar = {Record.foldL Prd    % find the first non-integer field in the first condition predicate 
-		 fun{$ I Fld} if {IsInt I}
-			      then Fld
-			      else I
-			      end
-		 end
-		 0}
-   in
-      if {IsInt NextVar}  % all features in Prd are integers => no more variables left in Prd
-      then
-	 thread  
-	    case T of nil
-	    then RuleHeadValue = {GetPred Prd Conf} 
-	    else 
-	       ThisVal = {GetPred Prd Conf}
-	    in
-	       if ThisVal == 0
-	       then RuleHeadValue=0   % conjunction , no need to continue
-	       else {TestConditions T Vars Conf RuleHeadValue}
+      if {IsEnumeratedPred Prd Conf} then {TestConditionsEnumerated Preds Vars Conf RuleHeadValue}
+      else
+	 NextVar = {Record.foldL Prd    % find the first non-integer field in the first condition predicate 
+		    fun{$ I Fld} if {IsInt I}
+				 then Fld
+				 else I
+				 end
+		    end
+		    0}
+      in
+	 if {IsInt NextVar}  % all features in Prd are integers => no more variables left in Prd
+	 then
+	    thread  
+	       case T of nil
+	       then RuleHeadValue = {GetPred Prd Conf} 
+	       else 
+		  ThisVal = {GetPred Prd Conf}
+	       in
+		  if ThisVal == 0
+		  then RuleHeadValue=0   % conjunction , no need to continue
+		  else {TestConditions T Vars Conf RuleHeadValue}
+		  end
 	       end
 	    end
-	 end
-      else % existential quantification in Prd : instantiate NextVar once for every subject
+	 else % existential quantification in Prd : instantiate NextVar once for every subject
            % ignore zero's except the last one
-	 PartialValues = {FD.tuple '#' Conf.size 0#1}
-	 Alternatives = {Map {List.number 1 Conf.size 1}
-			 fun{$ I}  %instantiate NextVar in Vars
-			    ExtVars = {Record.adjoinAt Vars NextVar I}
-			 in
-			     % replace NextVar by I in all Preds
-			    {Map Preds
-			     fun{$ C} {Record.map C
-				       fun{$ V} if {IsInt V} then V else ExtVars.V end end}
-			     end}
-			    #ExtVars#I
-			 end}
-      in
-	 {FD.sum PartialValues '>=:' RuleHeadValue} % close world
-	 {List.forAll Alternatives proc{$ ExtC#ExtV#J} % disjunction
-				    %thread 
-			            % try
-				      RuleHeadValue >=: PartialValues.J
-				      {TestConditions ExtC ExtV Conf PartialValues.J}
-		                    % catch _ then Value.failed  % TODO: find out in what cases we fail here and what to do then
-			            %end 
+	   % HERE WE CAN OPTIMISE THINGS BY USING ENUMERATIONS FOR CONFIG-ONLY PREDICATES
+	    PartialValues = {FD.tuple '#' Conf.size 0#1}
+	    Alternatives = {Map {List.number 1 Conf.size 1}
+			    fun{$ I}  %instantiate NextVar in Vars
+			       ExtVars = {Record.adjoinAt Vars NextVar I}
+			    in
+			        % replace NextVar by I in all Preds
+			       {Map Preds
+				fun{$ C} {Record.map C
+					  fun{$ V} if {IsInt V} then V else ExtVars.V end end}
 				end}
+			       #ExtVars#I
+			    end}
+	 in
+	    {FD.sum PartialValues '>=:' RuleHeadValue} % close world
+	    {List.forAll Alternatives proc{$ ExtC#ExtV#J} % disjunction
+				          %thread 
+			                  % try
+					 RuleHeadValue >=: PartialValues.J
+					 {TestConditions ExtC ExtV Conf PartialValues.J}
+		                          % catch _ then Value.failed  % TODO: find out in what cases we fail here and what to do then
+			                  %end 
+				      end}
+	 end
       end
    [] nil then RuleHeadValue = 1 % for body-less rules
    end
 end
 
+
+
+
+
 proc{Instantiate Rule Head Conf RuleHeadValue} % Head and all preds in Rule are global!!
                                               % Head is COMPLETELY instantiated clone of Rule.head !!
    % trying to allow implicit unification of parameters with same name in head is TOO LATE HERE !!
-   % TODO : check what the above means and clarify
+   % implicit unification has been taken care of in InstantiateDisjuction (see there)
    Vars =  {Record.clone Rule.vars}  %Rule.vars is something like vars(x:x y:y z:z) for behavior rules and
                                      % vars(x:_ y:_ z:_) for system rules
                                      % TODO: this has changed. System rules should now also have vars like vars(x:x y:y z:z)
@@ -392,8 +466,9 @@ in
    try
       Head = {Record.map Rule.head fun{$ Atm} Vars.Atm end} % unifying vars with corresponding variables in Head
             % now the body is maximally instantiated with subject ids from the head
-            % BUT IF Rule.head CONTAINS TWICE THE SAME VARIABLE, THIS CAUSES FAILURE OF THE SPACE
+            % BUT IF Rule.head CONTAINS TWICE THE SAME VARIABLE, THIS WOULD CAUSE FAILURE OF THE SPACE
             % INSTEAD IT SHOULD JUST CAUSE THE RULE TO FAIL DUE TO A BROKEN IMPLICIT EQUALITY CONDITION!
+            % THEREFOR WE DO THIS IN A try catch
       Failed = false
    catch Err then % WHAT ERROR SHOULD WE ACTUALLY CATCH ?
       {ShowInfo "Failed Head unification in rule -->"}
@@ -439,9 +514,9 @@ proc{InstantiateWhenNeeded SubjId Lbl Rules Conf}
 in
    Conf.subjects.SubjId.Lbl
    = {LazyTuple Conf.size Args
-      {Record.adjoinAt Lbl 1 SubjId} % seed for Lazytyple: eg. access(SubjId) to be completed to access(SubjId 1) etc
+      {Record.adjoinAt Lbl 1 SubjId} % seed for Lazytuple: eg. access(SubjId) to be completed to access(SubjId 1) etc
       proc{$ Pred ?Val}  % Pred is global and will be completely instantiated by LazyTuple by the time it gets used!!
-	 {ByNeed fun{$}  
+	 {ByNeed fun{$} 
 		    Val={FD.int 0#1} 
 		    if {IsInitFact Pred Conf}
 		    then        % don't instantiate rules, not necessary
@@ -465,49 +540,146 @@ in
      }
 end
 
+proc{CleanUpRules Subj Conf  ?AlwaysLabels ?NeverLabels ?RulesToInstall}
+   AllRules = {Append Conf.system Subj.rules}
+   SubjectNonQueryNorInitLabels = {GetSubjectNonQueryNorInitLabels Subj Conf}
+   CellNoChange = {NewCell false}
+   CellRulesToInstall =  {NewCell AllRules}
+   CellAlwaysLabels = {NewCell nil}
+   CellNeverLabels = {NewCell nil}
+in
+   for until:@CellNoChange do
+      PrevNeverLabelsCnt = {Length @CellNeverLabels}
+   in
+      CellNoChange:=true
+      CellNeverLabels := for Lbl in SubjectNonQueryNorInitLabels collect:C do  % don't touch query predicates or init predicates
+			    if  ({Not {Member Lbl @CellAlwaysLabels}}
+				 andthen {List.all @CellRulesToInstall fun{$ R} {Label R.head} \= Lbl end})
+			    then
+			       {C Lbl}
+			    end
+			 end
+      if  {Length @CellNeverLabels} > PrevNeverLabelsCnt then CellNoChange := false end
+      CellRulesToInstall := for R in @CellRulesToInstall collect:C do
+			       Head = R.head
+			       HeadLbl = {Label Head}
+			       HeadIsRegular = {Not {ImplicitUnificationInRuleHead R.head}}
+			    in
+			    % {ShowInfo ">>>>> iteration start in CleanUpRules"}
+			       if {List.all R.body
+				   fun{$ Prd}
+				      HeadIsRegular andthen Head.1 == Prd.1 andthen {Member {Label Prd} @CellAlwaysLabels}
+				   end}  % works also when body == nil
+			       then   % disregard the rule, it has an alwayslabel in its head
+				  CellNoChange := false
+				  if {Not {Member HeadLbl @CellAlwaysLabels}}
+				  then CellAlwaysLabels := HeadLbl|@CellAlwaysLabels
+				  end
+			       elseif {List.some R.body
+				       fun{$ Prd}
+					  R.head.1 == Prd.1 andthen {Member {Label Prd} @CellNeverLabels} 
+				       end}
+			       then
+				  CellNoChange := false % disregard the rule, it has a neverlabel in its body
+			       else {C R}
+			       end
+			     % {ShowInfo ">>>>> iteration end in CleanUpRules"} 
+			    end
+   end
+   %{ShowInfo "<<<<<< iteration ALMOST  done in CleanUpRules"} 
+   AlwaysLabels = @CellAlwaysLabels
+   NeverLabels = @CellNeverLabels
+   RulesToInstall = @CellRulesToInstall
+   %{ShowInfo "<<<<<< iteration done in CleanUpRules"} 
+end
 
-proc {InstallRules Subj Conf} % will close the world by using disjunctive conditions, except when deriving query predicates
+
+% proc{CleanUpRules Subj SubjectLabels Conf ?AlwaysLabels ?NeverLabels ?InstallRules}
+%    % should take global alwayslabels and global neverlabels into account too
+%    AllRules = {Append Conf.system Subj.rules}
+%    SubjectNonQueryNorInitLabels = {GetSubjectNonQueryNorInitLabels Subj Conf}
+%    CellNoChange = {NewCell false}
+%    CellInstallRules =  {NewCell AllRules}
+%    CellAlwaysLabels = {NewCell nil}
+%    CellNeverLabels = {NewCell nil}
+% in
+%    for until:@CellNoChange do
+%       PrevNeverLabelsCnt = {Length @CellNeverLabels}
+%    in
+%       CellNoChange:=true
+%       CellNeverLabels := for Lbl in SubjectNonQueryNorInitLabels collect:C do  % don't touch query predicates or init predicates
+% 			    if {Not {Member Lbl @CellAlwaysLabels}}
+% 			       andthen {List.all @CellInstallRules fun{$ R} {Label R.head} \= Lbl end}
+% 			    then
+% 			       {C Lbl}
+% 			    end
+% 			 end
+%       if  {Length @CellNeverLabels} > PrevNeverLabelsCnt then CellNoChange := false end
+%       CellInstallRules := for R in @CellInstallRules collect:C do
+% 			    % {ShowInfo ">>>>> iteration start in CleanUpRules"} 
+% 			     if  {Not {ImplicitUnificationInRuleHead R.head}} % e.g. not for access(x x) or did.getFrom(x y y) because the head is too specific
+% 				andthen {List.all R.body
+% 				  fun{$ Prd}
+% 				     R.head.1 == Prd.1 andthen {Member {Label Prd} @CellAlwaysLabels} 
+% 				  end}  % works also when body == nil
+% 			     then   % disregard the rule, it has an alwayslabel in its head
+% 				NewAlwaysLabel = {Label R.head}
+% 			     in
+% 				CellNoChange := false
+% 				if {Not {Member NewAlwaysLabel @CellAlwaysLabels}}
+% 				then CellAlwaysLabels := NewAlwaysLabel|@CellAlwaysLabels
+% 				end
+% 			     elseif {List.some R.body
+% 				     fun{$ Prd}
+% 					R.head.1 == Prd.1 andthen {Member {Label Prd} @CellNeverLabels} 
+% 				     end}
+% 			     then
+% 				CellNoChange := false % disregard the rule, it has a neverlabel in its body
+% 			     else {C R}
+% 			     end
+% 			     % {ShowInfo ">>>>> iteration end in CleanUpRules"} 
+% 			  end
+%    end
+%    AlwaysLabels = @CellAlwaysLabels
+%    NeverLabels = @CellNeverLabels
+%    InstallRules = @CellInstallRules
+%   % {ShowInfo "<<<<<< iteration done in CleanUpRules"} 
+% end
+proc {InstallSubjectRules Subj Conf} % will close the world by using disjunctive conditions, except when deriving query predicates
                               % detects always derived and never derived properties (the latter except for query predicates)
-   AllRules = {Append Conf.system Subj.rules} % could contain duplicates
-   BodylessRules = {Filter AllRules fun{$ R} R.body==nil end} % could contain duplicates
-   SubjectLabels = {GetAllSubjectPredLabels Subj} % all predicate labels that can have Subj as first argument
-   SubjectNonQueryNorInitLabels = {GetSubjectNonQueryNorInitLabels Subj Conf} % all labels (including system behavior !) that are not in subject's query predicates or init predicates
-   HeadLabels = {Filter SubjectLabels
-		 fun{$ Lbl} {List.some AllRules fun{$ R} {Record.label R.head}==Lbl
-						end}
-		 end}
-   AlwaysLabels = {Filter HeadLabels
-		   fun{$ Lbl}
-		      {List.some BodylessRules
-		       fun{$ R} {Record.label R.head}==Lbl
-			  andthen {Not {ImplicitUnificationInRuleHead R.head}} % e.g. not for access(x x)
-		       end}
-		   end}
-   %{Inspect 'AlwaysLabels'#AlwaysLabels}
-   NeverLabels = {Filter  % don't touch query predicates or init predicates
-		  SubjectNonQueryNorInitLabels
-		  fun{$ Lbl} {Not {Member Lbl HeadLabels}} 
-		  end}
-   %{Inspect 'NeverLabels'#NeverLabels}
-   Extremes = {Append AlwaysLabels NeverLabels}
-   NonExtremes = {Filter SubjectLabels fun{$ Lbl}
+   AlwaysLabels NeverLabels RulesToInstall
+   SubjectLabels = {GetAllSubjectPredLabels Subj}
+   Extremes NonExtremes SubjectConfigOnlyLabels
+in
+   {CleanUpRules Subj Conf ?AlwaysLabels ?NeverLabels ?RulesToInstall}
+   %{Inspect 'AlwaysLabels'#(Subj.name)#AlwaysLabels}
+   %{Inspect 'NeverLabels'#(Subj.name)#NeverLabels}
+   SubjectConfigOnlyLabels = {Filter {GetConfigLabels Subj Conf}
+			      fun{$ Lbl}  %{LabelArity Subj.id Lbl Conf} > 1 andthen
+				 {List.all RulesToInstall fun{$ R}  {Label R.head} \= Lbl end}
+			      end}
+   %{Inspect 'SubjectConfigOnlyLabels'#Subj.name#SubjectConfigOnlyLabels}
+   Extremes = {Flatten [AlwaysLabels NeverLabels SubjectConfigOnlyLabels]}
+   NonExtremes = {Filter SubjectLabels fun{$ Lbl}  % starting from would have the side-effect that some initialisation is not done
 					  {Not {Member Lbl Extremes}}
 				       end}
-in
-   %{ShowInfo '-> will set neverLabels to 0'}
+   Subj.derivedPredLabels = NonExtremes
    for Lbl in NeverLabels do Subj.Lbl = 0 end % OK even for fixpoints
-   %{ShowInfo '-> will set AlwaysLabels to 1'}
-   for Lbl in AlwaysLabels do
-      Subj.Lbl = 1
+   for Lbl in AlwaysLabels do Subj.Lbl = 1 end
+   for Lbl in SubjectConfigOnlyLabels do
+      if {LabelArity Subj.id Lbl Conf} > 1
+      then
+	 Subj.Lbl = {Filter Conf.subjects.(Subj.id).init fun{$ Fact} {Label Fact} == Lbl end}
+      else Subj.Lbl = 1
+      end
    end
-   %{ShowInfo '-> will instantiate NonExtremes when necessary'}
    for Lbl in NonExtremes do                    % we call InstantiateWhenNeeded for every Label here because
-      {InstantiateWhenNeeded Subj.id Lbl           % it should lazily build the structue
-       {Filter AllRules fun{$ R} R.body \= nill andthen {Label R.head} == Lbl
-			end}  % can result in nil : for query predicates with no (bodyless) rules
+      {InstantiateWhenNeeded Subj.id Lbl           % it should lazily build the structure
+%      {Filter AllRules fun{$ R} R.body \= nill andthen {Label R.head} == Lbl
+%			end}  % can result in nil : for query predicates with no (bodyless) rules
+       {Filter RulesToInstall fun{$ R} {Label R.head} == Lbl end}
        Conf}
    end
-   %{ShowInfo '-> done instantiating NonExtremes when necessary'}
 end
 
 fun{TemplateMatchesInstance TemplPred InstPred}
@@ -533,6 +705,127 @@ fun{TemplateMatchesInstance TemplPred InstPred}
    end
 end
 
+
+%------------ optimisation for underived predicates ------------
+%
+% body predicates that are not derived but present in config (globally for system rules, locally for behavior rules)
+%         (query predicates for maxconfig are excluded here) 
+%  - will be instantiated by enumerating the facts for the current subject during rule instantiation
+%  - should be the first predicates in the body of every rule-being-instantiated that contains them
+%  - will be stored in a list instead of in a table
+%  - facts with this label will never be set nor be (made) needed during fixpoint computations or during completion.
+%  - will not be shown in the fixpoint or detailed solution table (it's obvious, they were stated)
+%  - since they are not query predicates they will not show up in the solutions overview either.
+%
+%
+% rules with only such body predicates will thus, upon instantiation, make nothing needed.
+% rules with never-labels in their body should not be considered
+%  - this may result in more never-labels and more config-only labels
+% always-labels should be removed from the rules.
+%  - this may result in more always-labels.
+% this means, we should calculate a fixpoint for always-labels, neverl-labels and config-only labels
+%
+% Thus, we strive for optimisation without having to introduce forward chaining
+%
+%
+% 1) Collect all rules globally
+%    Collect headlabels
+%    For every label L not in queryLabels
+%       if L not in initlabels and there is no rule with L in head and not in body
+%       then add L to neverLabels
+%       elseif L in initLabels and no rule has L in head
+%       then add L to configOnlyLabels
+%       end
+%   For every Rule R 
+%       if $ has a neverLabel in is body then remove R
+%   Go to 1) until fixpt reached
+%
+%
+%
+%
+% 2) For every Subject S
+%      Collect rules for S
+%      Collect headlabels(S) for rules(S)
+%      For every label L not in queryLabels nor globalNeverlabels nor headLabels
+%         if L in initlabels(S)
+%         then add L to configOnlyLabels(S)
+%         else add L to neverLabels(S)
+%  2a) For every label L in HeadLabels(S)
+%         if L is in a bodyless rule R that has a head with no implicit unification
+%         then add L to alwaysLabels(S)
+%      For every behavior rule R in Rules(S)
+%         remove the alwaysLabels from the rules
+%      Go to 2a) until fixpt reached
+%
+%
+% for fixpt and completion of solutions, for every subject S:
+%   - only make headlabels(S) and querylabels(S) needed
+%   - only show headlabels(S) and querylabels(S) in fixpt tables and solution detail tables
+%-----------------------------------------------------------------
+
+fun{GetConfigLabels Subj Conf} % we do NOT include optional (query) facts, not even for maxfixpt
+   % we may want to keep predicates with arity =< 2 as they were !
+   {FoldLTail {GetSubjectNonQueryInitLabels Subj Conf}
+    fun{$ Result Tail} if % {LabelArityd Subj.id Tail.1 Conf} =< 2 orelse
+			  {Member Tail.1 Tail.2} %remove duplicates, just to be sure.
+		       then Result
+		       else Tail.1|Result
+		       end
+    end
+    nil}
+end
+
+fun{GetSubjectNonQueryInitLabels Subj Conf}
+   {Filter {GetAllSubjectPredLabels Subj}
+    fun{$ Lbl} {Not {IsQueryLabel Subj Lbl Conf}} andthen {IsInitLabel Subj Lbl Conf}
+    end}
+end
+
+
+
+
+
+%--------------- forward chaining stuff (for fixpoints and forward chainging rules) ----
+%------THIS IS NOT A GOOD IDEA (better: see above) --------------
+%
+% watch out for interference with always and neverlabels!
+%
+% fun{GetConfigLabels Conf} % we should include optional facts in maxfixpt
+%    {FoldLTail {Map  Conf.program.config.facts %{Append Conf.program.config.facts Conf.program.config.optional}
+% 	       fun{$ Prd} {Label Prd} end}
+%     fun{$ Result Tail} if {Member Tail.1 Tail.2}
+% 		       then Result
+% 		       else Tail.1|Result
+% 		       end
+%     end
+%     nil}
+% end
+
+
+% fun{GetInitLabels Conf} %no duplicates ... WRONG (on safe side) in assuming that private predicates are globally unique.
+%    {FoldLTail {Map Conf.init fun{$ Prd} {Label Prd} end}
+%     fun{$ Result Tail} if {Member Tail.1 Tail.2} then Result
+% 		       else Tail.1|Result
+% 		       end
+%     end
+%    nil}
+% end
+
+
+% fun{FWChainingRules Conf} % WRONG  (on safe side) : relies on private predicates being globaly unique.
+%    AllRules = {Flatten Conf.system|{Map {Record.toList Conf.subjects} fun{$ Subj} Subj.rules end}}  
+%    PushLabels = {Filter {GetInitLabels Conf}
+% 		 fun{$ Lbl} {List.all AllRules
+% 			     fun{$ Rule} {Label  Rule.head} \= Lbl end}
+% 		 end}
+% in
+%    {Filter AllRules
+%     fun{$ Rule}
+%        {List.all Rule.body fun{$ Prd} {Member {Label Prd} PushLabels} end}
+%     end}
+% end
+
+
 %------------------------ configuration parsing -------------------------
 
 fun{ExtractFeatures Rec Lst}  % returns Record with unique features in Lst and undefined fields
@@ -545,7 +838,7 @@ end
 fun{GlobalRuleToGlobal GR}  % give system rule its variables structure (fresh field variables)
                             % GR should have only one pred in head   
    Rule = {Record.adjoinAt GR vars {ExtractFeatures vars {Flatten {Record.toList GR.head}|
-						   {Map GR.body fun{$ C} {Record.toList C} end}}}}
+							  {Map GR.body fun{$ C} {Record.toList C} end}}}}
    {Record.forAllInd Rule.vars proc{$ I V} V=I end}  % TODO: this is new, to be similar to LocalRuleToGlobal. Is it OK?
 in
    Rule
@@ -584,8 +877,8 @@ fun{GetQPredsFromQSIds Conf} % don't add the ones that can be determined to be 1
 % 	   then Lst1
 % 	   else
 	   {FoldR {Permute Ar-1 Conf.size}
-	    fun{$ Perm Lst2}
-	       {List.toTuple Lbl Id|Perm}|Lst2
+	    fun{$ State Lst2}
+	       {List.toTuple Lbl Id|State}|Lst2
 	    end
 	    Lst1}
 % 	   end
@@ -620,7 +913,7 @@ fun{ParseConfig Problem}
 		     {NamedPredToId Prd}
 		  end}
       SubjFeatures = {Flatten
-		      [[name id rules locals type init]
+		      [[name id rules locals type init derivedPredLabels]
 		       Conf.knowledgeLabels
 		       %(if S.search then Conf.behaviorLabels 
 			%else nil end)
@@ -635,6 +928,7 @@ fun{ParseConfig Problem}
       Subj.rules = SubjRules
       Subj.init = SubjInit
       Subj.locals = {Record.toListInd Problem.behavior.(S.type).predicates}
+      %Subj.derivedPredLabels will be filled later.
       Subj
    end
 in
@@ -710,17 +1004,31 @@ fun{GetAllSubjectPredLabels Subj}
        [] locals then false
        [] type then false
        [] init then false
+       [] derivedPredLabels then false
        else true
        end
     end}
 end
 
 fun{ImplicitUnificationInRuleHead RuleHead}
-   {ShowInfo 'ImplicitUnificationInRuleHead -->'}
-   {Show {Record.map RuleHead fun{$ X} if {IsDet X} then X else '_' end
-			      end}}
-   {ShowInfo '<-- ImplicitUnificationInRuleHead'}
-   false % FOR NOW TODO : implement this  CORRECTLY (How??)
+   Lst = {Map {Record.toList RuleHead}
+	  fun{$ X} if X=='_' then {NewName} else X end
+	  end}
+   fun{Check Tail}
+      case Tail
+      of nil then false
+      [] X|T then if {Member X T} then true
+		  else {Check T}
+		  end
+      end
+   end
+   Unif = {Check Lst}
+in
+%    {ShowInfo 'ImplicitUnificationInRuleHead -->'}
+%    {Show {Record.map RuleHead fun{$ X} if {IsDet X} then X else '_' end
+% 			      end}#Unif}
+%    {ShowInfo '<-- ImplicitUnificationInRuleHead'}
+   Unif
 end
 
 fun{GetSubjectNonQueryNorInitLabels Subj Conf}
@@ -737,7 +1045,7 @@ end
 
 fun {IsInitLabel Subj Lbl Conf}
    {List.some Conf.init fun{$ Prd} Lbl == {Label Prd} andthen Prd.1==Subj.id
-			  end}
+			end}
 end
 
 fun {LabelArity SubjId Lbl Conf}  % TODO: CHECK AND IMPROVE IMPLEMENTATION
@@ -765,6 +1073,7 @@ end
 fun{NextDistributionPredGoodFirst Conf ?Trace ?Var} %return boolean indicating if var was found
    Rels = {Sort  {Filter Conf.qpreds %{AllQuerySubjectBehaviorPreds Conf}
 		  fun{$ Prd}  {IsRelevantForDistributionPred Prd Conf}
+		    % andthen {List.all Trace fun{$ Tr} Tr.pred \= Prd end} % filtering because of strange result when using reportprogress 
 		  end}
 	   fun{$ Pr1 Pr2}
 	      {FD.reflect.nbSusps {GetPred Pr1 Conf}} < {FD.reflect.nbSusps {GetPred Pr2 Conf}}  %ADDED IN EXPERIMENT
@@ -798,18 +1107,19 @@ fun{ZeroPredSpec Conf}
    {Map {Filter Conf.solution fun{$ Tr} Tr.value==0 end} fun{$ Tr} Tr.pred end}
 end
 
-proc{Distribute Root}
-   {List.forAll Root.liveness          % for efficiency: try more propagation, less search
+
+ProgressReportDepth = 6
+proc{Distribute Root}   {List.forAll Root.liveness          % for efficiency: try more propagation, less search
     proc{$Pred} {TellPred Pred Root 1}  % since this may result in false liveness positives, 
     end}                                % the final calculation will be redone in Finalize
-   {Distribute2 Root nil}
+   {Distribute4 Root nil 0 ProgressReportDepth}
 end
 
 proc{Distribute2 Root Trcs}
    NextPred NextVar
 in
    {Space.waitStable}
-   if  {NextDistributionPred Root  NextPred NextVar}  
+   if  {NextDistributionPred Root NextPred NextVar}  
    then 
       choice  % Distributing LEFT
 	 NextVar=1
@@ -824,14 +1134,42 @@ in
 			    fun{$ Prd} {IsDetPred Prd Root} end}
 		       fun{$ Prd} tr(pred: Prd value: {GetPred Prd Root}) end}
       Root.traces = Trcs
-      {MarkSolution Root.solution}
+   end
+end
+
+proc{Distribute4 Root Trcs Count Depth} % in upper nodes of searchtree only, to mark progress
+   if Depth =< 0
+   then {Distribute2 Root Trcs}
+   else
+      NextPred NextVar
+   in
+      {Space.waitStable}
+      if  {NextDistributionPred Root NextPred NextVar}  
+      then 
+	 choice  % Distributing LEFT
+	    NextVar=1
+	    %{Show {Map {Append Trcs [tr(pred:NextPred value:1)]} fun{$ Tr} Tr.value end}}
+	    {Distribute4 Root {Append Trcs [tr(pred:NextPred value:1)]} Count {Max Depth-1 0}}
+	 []      % DISTRIBUTING RIGHT
+	  %{ShowInfo "must not be 1 : "#{Label NextPred}}
+	    NextVar=0
+	    {ReportProgress Count + {Pow 2 (Depth-1)}}
+	    % {Show {Map {Append Trcs [tr(pred:NextPred value:0)]} fun{$ Tr} Tr.value end}}
+	    {Distribute4 Root {Append Trcs [tr(pred:NextPred value:0)]} Count + {Pow 2 (Depth-1)} {Max Depth-1 0}}
+	 end
+      else %Success
+	 Root.solution = {Map {Filter Root.qpreds % {AllQuerySubjectBehaviorPreds Root}
+			       fun{$ Prd} {IsDetPred Prd Root} end}
+			  fun{$ Prd} tr(pred: Prd value: {GetPred Prd Root}) end}
+	 Root.traces = Trcs
+      end
    end
 end
 
 
 %---------calculation stuff ----
-% TODO : get rid of calcdist
-proc{CalculateSolutions Problem NumberOfSolutions CalcDist Time1 TimeOut ?TimeTaken ?AllSolutions ?GoodSolutions ?Completed}
+
+proc{CalculateSolutions Problem NumberOfSolutions Time1 TimeOut ?TimeTaken ?AllSolutions ?GoodSolutions ?Completed}
    PreScript = {MakePreScript Problem}
    SO = {New ScollarSearch.object
 	 script(PreScript MakeMinFixpt MakeMaxFixpt LearnFromFixpoints Distribute Finalize MoreSolutions)}
@@ -857,6 +1195,7 @@ proc{CalculateFixpoints Problem ?MinFp ?MaxFp}
 in
    MinFp =  {SO getMinFixpt($)}
    MaxFp = {SO getMaxFixpt($)}
+   %{Inspect maxFp#MaxFp}
 end
 
 
@@ -869,23 +1208,36 @@ fun{MakePreScript Problem}
    end
 end
 
+
+proc{InstallConfigRules Conf}
+   {Record.forAll Conf.subjects proc{$ Subj}
+				   {InstallSubjectRules Subj Conf}
+				end}
+end
+
+
 proc{MakeMinFixpt Root}
-   %{ShowInfo 'in MakeMinFixpt'}
+   {ShowInfo 'in MakeMinFixpt'}
    Root.minFixptOnePreds = nil  % only used while distributing
    Root.maxFixptZeroPreds = nil % only used while distributing
    Root.forFixpoint = true
-   {Record.forAll Root.subjects proc{$ Subj}
-				   {InstallRules Subj Root}
-				end}
+   %{Inspect 'FWChainingRules '#{FWChainingRules Root}}
+   {InstallConfigRules  Root}
    {MakeComplete Root}
   % {Space.waitStable}
-  % {ShowInfo 'done MakeMinFixpt'}
+   {ShowInfo 'done MakeMinFixpt'}
 end
 
-proc{MakeComplete Root}  % make everything needed
-   %{ShowInfo 'in MakeComplete'}
-   {ForAllSubjectLabels Root MakeLabelNeeded}
-   %{ShowInfo 'done MakeComplete'}
+proc{MakeComplete Conf}  % make everything needed
+   {Record.forAll Conf.subjects
+    proc{$ Subj}
+       {ForAll Subj.derivedPredLabels
+	proc{$ Lbl}
+	   Ar =  {LabelArity Subj.id Lbl Conf}
+	in
+	   {MakeLabelNeeded Subj Lbl Ar Conf}
+	end}
+    end}   
 end
 
 proc{MakeMaxFixpt MinFixpt}          % maximize query predicates -- will not fail because no 0's were told yet
@@ -897,6 +1249,15 @@ proc{MakeMaxFixpt MinFixpt}          % maximize query predicates -- will not fai
    %{ShowInfo 'done MakeMaxFixpt'}
 end
 
+% proc{MakeMaxFixptFwds MinFixpt}          % maximize query predicates -- will not fail because no 0's were told yet
+%    %{ShowInfo 'in MakeMaxFixpt'}
+%    for Pred in MinFixpt.qpreds do    % assumes that MinFixpt.forFixpoint is true !
+%       {TellPred Pred MinFixpt 1}
+%    end
+%    %{Space.waitStable}
+%    %{ShowInfo 'done MakeMaxFixpt'}
+% end
+
 proc{GetSolutionsFrom SO NumberOfSolutionsOrAll Time1 TimeOut ?TimeTaken ?AllSolutions ?GoodSolutions ?Completed}
    AbsoluteEndTimeSecs = Time1 + TimeOut
    NumberOfSolutions = case NumberOfSolutionsOrAll
@@ -905,23 +1266,33 @@ proc{GetSolutionsFrom SO NumberOfSolutionsOrAll Time1 TimeOut ?TimeTaken ?AllSol
 		       else NumberOfSolutionsOrAll
 		       end % TODO adapt interface
    fun{NextSol Nmbr Tail} % returns boolean to indicate completion
-      T1 T2 OK Sol
+      T1 T2 T3 T1Done T2Done T3Done OK Sol
    in
       thread %calculation thread  
 	 T1 = {Thread.this}
 	 Sol = {SO next($)}
-	 OK = unit
+	 T1Done=unit
       end
       thread  %time out thread
 	 T2 = {Thread.this}
-	 {Time.delay (AbsoluteEndTimeSecs - {OS.time})*1000}
-	 OK = unit
+	 if TimeOut == 0
+	 then {Wait _}
+	 else {Time.delay (AbsoluteEndTimeSecs - {OS.time})*1000}
+	 end
+	 T2Done = unit
       end
-      {Wait OK}
+      thread  %interrupt thread
+	 T3 = {Thread.this}
+	 {Wait @InterruptCell}
+	 T3Done = unit
+      end
+      OK = {Record.waitOr r(T1Done T2Done T3Done)}
       try {Thread.terminate T1} catch _ then skip end
       try {Thread.terminate T2} catch _ then skip end
-      if {IsDet Sol}
-      then
+      try {Thread.terminate T3} catch _ then skip end
+      case OK
+      of 1 then
+	 {ShowInfo "Regular thread ending"}
 	 if Sol==nil
 	 then
 	    Tail=nil
@@ -929,6 +1300,7 @@ proc{GetSolutionsFrom SO NumberOfSolutionsOrAll Time1 TimeOut ?TimeTaken ?AllSol
 	 else
 	    NextTail
 	 in
+	    {MarkSolution Sol}
 	    Tail = Sol|NextTail
 	    if Nmbr > 1 orelse Nmbr == 0 % stop when Nmbr == 1
 	    then
@@ -938,8 +1310,12 @@ proc{GetSolutionsFrom SO NumberOfSolutionsOrAll Time1 TimeOut ?TimeTaken ?AllSol
 	       true
 	    end
 	 end
+      [] 2 then {ShowInfo "timed out"}
+	 Tail = nil
+	 false
       else
-	 Tail= nil
+	 {ShowInfo "INTERRUPTED"}
+	 Tail = nil
 	 false
       end
    end
@@ -958,9 +1334,7 @@ proc{LearnFromFixpoints MinFixpt MaxFixpt Current} % still no distribution
    Current.maxFixptZeroPreds = {DeterminedZeroPreds MaxFixpt}
    Current.forFixpoint = false
    %{Inspect inLearnFromFixpoints}
-   {Record.forAll Current.subjects proc{$ Subj}
-				      {InstallRules Subj Current}
-				   end}
+   {InstallConfigRules Current}
    %{Inspect inLearnFromFixpointsAfterInstallRules}
    {List.forAll Current.safety proc{$ Pred} {TellPred Pred Current 0} end}
    %{Inspect doneLearningFromFixpoints}
@@ -1021,69 +1395,6 @@ proc{MoreSolutions Old New} % all further solutions must have at least one 0 rep
     end}
 end
 
-   
-% proc{CalculateSolutionsQ  QueryScript OneOrAll CalcDist Time1 TimeOut ?TimeTaken ?AllSolutions ?GoodSolutions ?Completed}
-%    T1 T2 Out OutCell={NewCell nil} Done
-%    %if Options.debug then {Show inCalculateSolutionsQ} end
-%    SearchObject
-% in
-%    {Show enteringFinalCalculationAtTimeZeroPlus({OS.time}-Time1)}
-%    thread %calculation thread
-%       %try 
-%       T1 = {Thread.this}
-%       SearchObject =  if OneOrAll==one% andthen Options.'cond'
-%                                % INCOMPLETE CONDITION: SHOULD BE MORE RESTRAINED (LIVENESS)
-% 		      then {New FindObject script(QueryScript)}
-% 		      else {New Search.object script(QueryScript MoreSolutions rcd:CalcDist)}
-% 		      end
-%       for break:BR
-%       do 
-% 	 Next = {SearchObject next($)}
-%       in
-% 	 if Next==nil  
-% 	 then
-% 	    Out=true|@OutCell
-% 	    Done = true
-% 	    {BR}
-% 	 else
-% 	    OutCell := {Append @OutCell Next}
-% 	    if OneOrAll==one then
-% 	       Out=true|@OutCell
-% 	       Done = true
-% 	       {BR}
-% 	    end
-% 	 end
-%       end
-% %       catch E then {Show somethingWrongInCalculateSolutionsQ(E)} % catch the terminate error thrown by Thread.terminate   
-% % 	 OutCell:=Value.failed 
-% %       end
-%    end
-%    thread  %time out thread
-%       T2 = {Thread.this}
-%       {Time.delay TimeOut}
-%       Done = false
-%       try Out=false|@OutCell catch E
-%       then {Show couldNotAssignExtractSolutionsUponTimeOut(calculateSolutionsQ:E)}
-%       end
-%    end
-%    {MarkProgress 1000 Done}
-%    %{Wait Done}
-%    try {Thread.terminate T1} catch _ then skip end
-%    try {Thread.terminate T2} catch _ then skip end
-%    {Show doneWaiting}
-%    Completed|AllSolutions = case Out
-% 			    of true|_ then Out
-% 			    [] false|_ then Out
-% 			    else false|Out
-% 			    end
-%    GoodSolutions = {Filter AllSolutions
-% 		    fun{$ Sol} Sol.alive
-% 		    end}
-%    TimeTaken = {OS.time} - Time1
-%    %if Options.'local' andthen Options.debug then {Inspector.inspect GoodSolutions} end
-% end
-
-% --- moved over here from scollarhtml.oz
 
 fun{Permute N1 N2}
    %if Options.debug then {Show permute('N1':N1 'N2':N2)} end
@@ -1103,10 +1414,12 @@ fun{AllPredPermutations Id Lbl Ar Size}
 end
 
 proc{MarkSolution Sol}
-   {ShowInfo '-----> marking Solution'}
+   {Show'-----> marking Solution'#{Label Sol}}
+   % {@ProgressBarCell incrSolCnt({Label Sol}==finalized)}
+   {AddSolCnt}
 end
 
-proc{MarkProgress Interval StopSignal} %StopSignal is undefined variable that is set to true when
+proc{MarkProgress Interval DoThis StopSignal} %StopSignal is undefined variable that will be set to stop this
    X
 in
    thread {Time.delay Interval}
@@ -1115,7 +1428,17 @@ in
    case {Record.waitOr r(done:StopSignal continue:X)}
    of continue then
       %{ShowInfo '>>>>> time interval elapsed'}
-      {MarkProgress Interval StopSignal}
+      thread {DoThis} end
+      {MarkProgress Interval DoThis StopSignal}
    else skip
    end
+end
+
+
+proc{ReportProgress Count}
+   %Str = {VirtualString.toString "Progress: "#Count#"/"#{Pow 2 ProgressReportDepth}#"th of search space explored"}
+   % if {Not @ProgressBarCell == nil} then {@ProgressBarCell setRatio(Count {Pow 2 ProgressReportDepth})} end
+%in
+%   {ShowInfo Str}
+  {ReplyStatus Count#'/'#{Pow 2 ProgressReportDepth}}
 end
