@@ -189,13 +189,11 @@ define
 			  catch E then {ErrorMsg 'trouble marshalling solution(s)'#(E)}
 			  end
 	 end
-	 %{ReportProgress {Pow 2 ProgressReportDepth}}
-	 %if {Not @ProgressBarCell == nil} then {@ProgressBarCell setRatio(64 64)} end
-	 %ProgressBarCell := nil
       end
       %{ShowInfo Response}
-      %@EndOfControlSignalCell=unit
-      {ReportProgress {Pow 2 ProgressReportDepth}}
+      if OneOrAll == all andthen {Not {IsDet @InterruptCell}} % 
+      then {ReportProgress {Pow 2 ProgressReportDepth}}
+      end
       Response
    end
 
@@ -265,19 +263,19 @@ in
 	    case Msg
 	    of result#Vs then
 	       if {Not {IsDet Vs}} then {Show 'Did NOT expect result#_ here'} end
-	       {Show {VirtualString.toAtom Vs}}
+	      % {Show {VirtualString.toAtom Vs}}
 	       {ServerSocket write(vs:Vs)}
 	       {ServerSocket flush}
 	       thread   {ServeRequest} end
 	    [] error#Vs then
 	       if {Not {IsDet Vs}} then {Show 'Did NOT expect error#_ here'} end
-	       {Show {VirtualString.toAtom "<error>\n"#{VirtualString.toString Vs}#"\n</error>\n"}}
+	      % {Show {VirtualString.toAtom "<error>\n"#{VirtualString.toString Vs}#"\n</error>\n"}}
 	       {ServerSocket write(vs:"<error>\n"#{VirtualString.toString Vs}#"\n</error>\n")}
 	       {ServerSocket flush}
 	       thread   {ServeRequest} end
 	    [] status#Vs then
 	       if {Not {IsDet Vs}} then {Show 'Did NOT expect status#_ here'} end
-	       {Show {VirtualString.toAtom "<reply><status>\n"#{VirtualString.toString Vs}#"\n</reply>\n"}}
+	      % {Show {VirtualString.toAtom "<reply><status>\n"#{VirtualString.toString Vs}#"\n</reply>\n"}}
 	       {ServerSocket write(vs:"<reply><status>\n"#{VirtualString.toString Vs}#"\n</reply>\n")}
 	       {ServerSocket flush}
 	    [] resetSolCnt then
@@ -286,7 +284,7 @@ in
 	       Str =  {VirtualString.toString (@SolCnt+1)#" solution"#if @SolCnt==0 then "" else "s" end#" found"}
 	    in
 	       SolCnt := @SolCnt + 1
-	       {Show {VirtualString.toAtom "<reply><status>\n"#Str#"\n</reply>\n"}}
+	      % {Show {VirtualString.toAtom "<reply><status>\n"#Str#"\n</reply>\n"}}
 	       {ServerSocket write(vs:"<reply><status>\n"#Str#"\n</reply>\n")}
 	       {ServerSocket flush}
 	    else
