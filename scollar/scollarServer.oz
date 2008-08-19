@@ -62,17 +62,24 @@ define
       if {ParsePattern Pattern ?_ ?Message}
       %if {ParsePattern Pattern {Inspect} ?Message}
       then "<reply><check>\nOK\n</reply>\n"
-      else {Flatten ["<error>\n"
-		     {ErrorMsg Message}
-		     "\n</error>\n"]}
+      else {ErrorReply Message}
       end
    end
    
    fun{ErrorMsg E}
-      if {String.is E} then E
-      elseif {VirtualString.is E} then {VirtualString.toString E}
-      else {Value.toVirtualString E 100 100}
+      if {IsDet E} then
+	 if {String.is E} then E
+	 elseif {VirtualString.is E} then {VirtualString.toString E}
+	 else {Value.toVirtualString E 100 100}
+	 end
+      else "undetermined error message"
       end
+   end
+
+   fun{ErrorReply E}
+      {Flatten ["<error>\n"
+		{ErrorMsg E}
+		"\n</error>\n"]}
    end
       
    proc{Process RequestAndData}% TimeOut}   % !!! CODE VULNERABLE FOR WINDOWS AND MAC LINE ENDINGS??
@@ -96,7 +103,7 @@ define
 	    SolutionsCell := empty
 	    {ReplyResult {Solve one Data {String.toInt TO}}}
 	 else
-	    {ReplyResult {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}}
+	    {ReplyError {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}}
 	 end
       [] ["sols" TO]  then
 	 if {String.isInt TO} % Arguments = ["sol1" RecomputationDistance TimeOutInMillisec]
@@ -104,13 +111,13 @@ define
 	    SolutionsCell := empty
 	    {ReplyResult {Solve all Data  {String.toInt TO}}}
 	 else
-	    {ReplyResult {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}}
+	    {ReplyError {ErrorMsg "expected integer arguments RecomputationDistance and TimeOutInMillisec"}}
 	 end
       [] ["show" SolutionNumber] then if {String.isInt SolutionNumber}
 				      then {ReplyResult  {ShowSolution {String.toInt SolutionNumber}}}
-				      else {ReplyResult  {ErrorMsg "expected integer argument SolutionNumber"}}
+				      else {ReplyError  {ErrorMsg "expected integer argument SolutionNumber"}}
 				      end
-      else {ReplyResult {ErrorMsg "unknown action requested"}}
+      else {ReplyError {ErrorMsg "unknown action requested"}}
       end
    end
 
@@ -144,7 +151,7 @@ define
 	      in
 		 {FixpointsReply MinFp MaxFp ArcLabels {DotColorsFor ArcLabels}}
 	      catch E then
-		 {ErrorMsg 'trouble marshalling calculated fixpoint'(E)}
+		 {ErrorReply 'trouble marshalling calculated fixpoint'(E)}
 	      end
 	 end
       end				   
@@ -188,6 +195,7 @@ define
       end
       %{ShowInfo Response}
       %@EndOfControlSignalCell=unit
+      {ReportProgress {Pow 2 ProgressReportDepth}}
       Response
    end
 
@@ -230,60 +238,24 @@ define
 				       len:L)}
       {Show 'Length Control Msg'(L)}
       {Wait ControlMsg}
-      if ControlMsg == "interrupt\n" then @InterruptCell = unit end
+      if ControlMsg == "interrupt\n" then
+	 @InterruptCell = unit
+	%{ReportProgress {Pow 2 ProgressReportDepth}}
+      end
       if ControlMsg \= "endOfControl\n" then {ServeControl} end
    end
 
 
-%     proc{ServeControl ControlSocket} % asynchronous communication: possible replies should go via global ControlReportPort
-%        L
-%        ControlMsg 
-%        ControlReply
-%     in
-%        ControlMsg = {ControlSocket read(list:$
-%  				       size:4096
-%  				       len:L)}
-%        {Show 'Length Control Message'(L)}
-%        %{ControlSocket flush}
-%        %{ShowInfo 'control socket flushed'}
-%        case {Record.waitOr r(@EndOfControlSignalCell ControlMsg)}
-%        of 1 then {ShowInfo 'end-of-control-signal received'}
-%  	 skip % no more control msgs to be expected for current calculation
-%        [] 2 then
-%  	 thread {ShowInfo 'will proces control msg now'}
-%  	    ControlReply = {ProcessControl ControlMsg}
-%  	    {ShowInfo 'control msg processed'}
-%  	 end
-%  	 case {Record.waitOr r(@EndOfControlSignalCell ControlReply)}
-%  	 of 1 then {ShowInfo 'End-Of-Control-Signal received (2)'}
-%  	    skip % new calculation overrides control msg currently being processed
-%  	 [] 2 then
-%  	    {ShowInfo 'now ready for next control signal'}
-%  	    {Port.send ControlReportPort ControlReply}
-%  	    {ServeControl ControlSocket}
-%  	 end
-%        end
-%     end
 
- %    proc {StartControlReportPort ControlSocket}
-%        thread
-%  	 for Msg in ControlReportStream
-%  	 do
-%  	    {ControlSocket write(vs:Msg)} % java side uses socket.readLine()
-%  	    {ShowInfo "control message \""#Msg#"\" was sent on control socket"}
-%  	    %{ControlSocket flush}
-%  	 end
-%        end
-%     end
-   
-  % ProgressBarCell = {NewCell nil}
    InterruptCell = {NewCell _}
    ServerSocket     ControlSocket
    ServerPortNumber ControlPortNumber
    ReplyStatus
    ReplyResult
+   ReplyError
    ResetSolCnt
    AddSolCnt
+   
 in   
    local S P = {NewPort S}
       SolCnt = {NewCell 0}
@@ -292,10 +264,20 @@ in
 	 for Msg in S do
 	    case Msg
 	    of result#Vs then
+	       if {Not {IsDet Vs}} then {Show 'Did NOT expect result#_ here'} end
+	       {Show {VirtualString.toAtom Vs}}
 	       {ServerSocket write(vs:Vs)}
 	       {ServerSocket flush}
-	       {ServeRequest}
+	       thread   {ServeRequest} end
+	    [] error#Vs then
+	       if {Not {IsDet Vs}} then {Show 'Did NOT expect error#_ here'} end
+	       {Show {VirtualString.toAtom "<error>\n"#{VirtualString.toString Vs}#"\n</error>\n"}}
+	       {ServerSocket write(vs:"<error>\n"#{VirtualString.toString Vs}#"\n</error>\n")}
+	       {ServerSocket flush}
+	       thread   {ServeRequest} end
 	    [] status#Vs then
+	       if {Not {IsDet Vs}} then {Show 'Did NOT expect status#_ here'} end
+	       {Show {VirtualString.toAtom "<reply><status>\n"#{VirtualString.toString Vs}#"\n</reply>\n"}}
 	       {ServerSocket write(vs:"<reply><status>\n"#{VirtualString.toString Vs}#"\n</reply>\n")}
 	       {ServerSocket flush}
 	    [] resetSolCnt then
@@ -304,10 +286,18 @@ in
 	       Str =  {VirtualString.toString (@SolCnt+1)#" solution"#if @SolCnt==0 then "" else "s" end#" found"}
 	    in
 	       SolCnt := @SolCnt + 1
+	       {Show {VirtualString.toAtom "<reply><status>\n"#Str#"\n</reply>\n"}}
 	       {ServerSocket write(vs:"<reply><status>\n"#Str#"\n</reply>\n")}
 	       {ServerSocket flush}
+	    else
+	       {Show '==>'}
+	       {Show {VirtualString.toAtom Msg}}
+	       {Show '<=='}
 	    end
 	 end
+      end
+      proc{ReplyError Vs}
+	 {Port.send P error#Vs}
       end
       proc{ReplyStatus Vs}
 	 {Port.send P status#Vs}

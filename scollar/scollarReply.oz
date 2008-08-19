@@ -477,7 +477,7 @@ fun{FixpointsReply MinFp MaxFp ArcPreds Colors}
 		   fun{$ Subj} {Subject2FixptText Subj.id MinFp MaxFp} end}
 		 }
 	    catch Err then {Show Err}
-	       {ErrorMsg "ERROR CONSTRUCTING FIXPOINT TABLES(Err)"}
+	       {ErrorReply "ERROR CONSTRUCTING FIXPOINT TABLES(Err)"}
 	    end
    GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph [MinFp MaxFp] [MinFp MaxFp] ArcPreds Colors}#"\n</jpg>\n"}
 in
@@ -493,7 +493,7 @@ fun{ShowSolutionReply Nr Solutions ArcPreds Colors}
 		   fun{$ Subj} {Subject2text Subj Sol} end}
 		 }
 	    catch Err then {Show Err}
-	       {ErrorMsg "ERROR CONSTRUCTING TABLES in ShowSolutionReply"}
+	       {ErrorReply "ERROR CONSTRUCTING TABLES in ShowSolutionReply"}
 	    end
    GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph Solutions [Sol] ArcPreds Colors}#"\n</jpg>\n"}
 in
