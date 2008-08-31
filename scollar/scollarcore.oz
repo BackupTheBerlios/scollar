@@ -92,7 +92,7 @@ fun{GetPredValue Val Keys}     % make structure needed to cause structure being 
 end
 
 proc{TellPred Prd Conf Val}  % will not block, may cause structure to be built,
-   Val = {GetPred Prd Conf}      % may cause rules to be installed (not when both sides are undetermined)
+   Val = {GetPred Prd Conf}  % may cause rules to be installed (not when both sides are undetermined)
 end                          % may cause faulure 
 
 fun{IsEvenOneInMinFixpt Pred Conf} % TODO: OPTIMIZE
@@ -328,7 +328,6 @@ in
    end
 end
 
-
 proc{TestConditionsEnumerated SortedPreds Vars Conf RuleHeadValue} % RuleHeadValue is 0#1 FD variable
    % first condition Prd in SortedPreds is an enumerated predicate with Prd.1 instantiate (integer)
    % it is either a NeverLabel, an AlwaysLabel or a ConfigOnlyLabel for the subject with id Prd.1
@@ -504,6 +503,21 @@ in
 				 end}
    if CloseWorld then
       {FD.sum RuleResults '>=:' PredValue}  % works perfect even in case RuleResults=='#' => PredValue=0
+      
+    % currently we don't close the world when deriving qPreds, to allow underivable qPreds to become 1 by choice
+    % problem: Q A => Q1; and Q1 => S;  with S==0 and A==1 should derive that Q==0
+    % we need to be able to close the world for Q when Q's value was derived (possibly from closure)
+    % we create a by-choice-Q variable different from Q for every qPred Q
+    % and we add by-choice-Q to the sum when closing the world on Q
+    % (doing so will cause by-choice-Q to become 0 if Q becomes 0 by closure)
+    % upon stability, before distribution properly, set all undefined by-choice-Q's for which Q is defined to 0
+    % (doing so will close the world properly on Q: by-choice-Q's influence in the sum will vanish)
+    % do this repeatedly when necessary, because of the possible effects of closing the world
+    % when distributing, first try Q's that have less rules deriving Q. (?!)
+    % to distribute, choose an undefined Q, unify it with by-choice-Q, and set to 1 (or to 0 when backtracking)
+    % problem now solved:  Q A => Q1; and Q1 => S;  with S==0 and A==1
+    % from closing world on Q1 : sum(Q,0,by-choice-Q1) >=: Q1 with Q1==1 derived by closing world on S
+    % upon stability, by-choice-Q1 will be set to 0 and thus Q will become 1.
    end
 end
 
