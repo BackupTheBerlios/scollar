@@ -52,10 +52,10 @@ fun{GenerateGraph GoodSolutions Subset PredLabels Colors}
 			  end
 		)
 	   }
-      %F = {VirtualString.toString '/Users/fsp/scollardata/generatedjpg/'#{RandomFileName}#'.jpg'}
-      F = {Append {OS.tmpnam} ".jpg"}
+     % F = {Append {OS.tmpnam} ".jpg"}
+      F = {Append {OS.tmpnam} ".gif"}
    in
-      {DW writeJpg(F)}
+      {DW writeGif(F)}
       F
    end
 end
@@ -119,7 +119,8 @@ fun{SolutionsReply TTime Nmbr GoodSolutions Completed ArcPreds Colors}
 						    else "of which "#NmbrOK#" are alive.\n"end)
 	     end
    {ShowInfo NumberV}
-   GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph GoodSolutions GoodSolutions ArcPreds Colors}#"\n</jpg>\n"}
+  %GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph GoodSolutions GoodSolutions ArcPreds Colors}#"\n</jpg>\n"}
+   GraphReply = {VirtualString.toString "<gif>\n"#{GenerateGraph GoodSolutions GoodSolutions ArcPreds Colors}#"\n</gif>\n"}  
 in
    {Flatten
     [ "<reply><sol>\n"
@@ -479,13 +480,15 @@ fun{FixpointsReply MinFp MaxFp ArcPreds Colors}
 	    catch Err then {Show Err}
 	       {ErrorReply "ERROR CONSTRUCTING FIXPOINT TABLES(Err)"}
 	    end
-   GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph [MinFp MaxFp] [MinFp MaxFp] ArcPreds Colors}#"\n</jpg>\n"}
+   %GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph [MinFp MaxFp] [MinFp MaxFp] ArcPreds Colors}#"\n</jpg>\n"}
+   GraphReply = {VirtualString.toString "<gif>\n"#{GenerateGraph [MinFp MaxFp] [MinFp MaxFp] ArcPreds Colors}#"\n</gif>\n"}
 in
    %{Inspect 'GraphReply'#{VirtualString.toAtom GraphReply}}
    {VirtualString.toString "<reply><fixpts>\nCalculated Fixpoint. \n"#GraphReply#Tables#"</reply>\n"}
 end
 
 fun{ShowSolutionReply Nr Solutions ArcPreds Colors}
+   %{ShowInfo 'in ShowSolutionReply '#Nr}
    Sol = {Nth Solutions Nr}
    %thread  {Inspect 'Solution nr '#Nr#' '#Sol} end
    Tables = try  {Flatten
@@ -495,8 +498,13 @@ fun{ShowSolutionReply Nr Solutions ArcPreds Colors}
 	    catch Err then {Show Err}
 	       {ErrorReply "ERROR CONSTRUCTING TABLES in ShowSolutionReply"}
 	    end
-   GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph Solutions [Sol] ArcPreds Colors}#"\n</jpg>\n"}
+   %GraphReply = {VirtualString.toString "<jpg>\n"#{GenerateGraph Solutions [Sol] ArcPreds Colors}#"\n</jpg>\n"}
+   GraphReply = {VirtualString.toString "<gif>\n"#{GenerateGraph Solutions [Sol] ArcPreds Colors}#"\n</gif>\n"}
+   %{ShowInfo 'in ShowSolutionReply '#Nr#' done creating GraphReply of length '#{Length GraphReply}}
+   ReplyString
 in
-   {VirtualString.toString "<reply><show "#Nr#">\nSolution "#Nr#"\n"#GraphReply#Tables#"</reply>\n"}
+   ReplyString = {VirtualString.toString "<reply><show "#Nr#">\nSolution "#Nr#"\n"#GraphReply#Tables#"</reply>\n"}
+   %{ShowInfo {VirtualString.toAtom ReplyString}}
+   ReplyString
 end
 

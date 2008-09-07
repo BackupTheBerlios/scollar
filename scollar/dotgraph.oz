@@ -20,6 +20,7 @@
 %% {GW rebuildArcs()}  %%to re-build arcs only.
 %% {GW writeToNewFileNamed(FileName)}  % opens, over-writes and closes the file
 %% {GW writeJpg(JpgFileName)}  % opens, over-writes and closes the file
+%% {GW writeGif(GifFileName)}  % opens, over-writes and closes the file
 %%%%%%%%%%%%%%%%%%%
 
 
@@ -157,6 +158,7 @@ define
 	 in
 	    case Appx
 	    of "jpg" then  Reply = {List.takeWhileInd FileName fun{$ I _} I < Len - 3 end}
+	    [] "gif" then  Reply = {List.takeWhileInd FileName fun{$ I _} I < Len - 3 end}
 	   % [] "svg" then  Reply = {List.takeWhileInd FileName fun{$ I _} I < Len -3 end}
 	    [] "dot" then  Reply = {List.takeWhileInd FileName fun{$ I _} I < Len -3 end}
 	    else Reply = FileName
@@ -172,9 +174,19 @@ define
       in
 	 fileName := DotName
 	 {self WriteGraph()}
-	 {OS.system "dot -Tjpg "#DotName#" -o "#JpgName _}
+	 {OS.system "dot -Tgif "#DotName#" -o "#JpgName _}
+	 % {OS.system "dot -Tjpg "#DotName#" -o "#JpgName _}
 	 % {OS.system "dot -Tsvg "#DotName#" -o "#SVGName _}
 	 % {OS.system "convert "#SVGName#" "#JpgName _}
+      end
+      meth writeGif(FileName)
+	 MainPart = {self getMainFileNamePart(FileName $)}
+	 DotName = {Append MainPart ".dot"}
+	 GifName = {Append MainPart ".gif"}
+      in
+	 fileName := DotName
+	 {self WriteGraph()}
+	 {OS.system "dot -Tgif "#DotName#" -o "#GifName _}
       end
    end
 end   
