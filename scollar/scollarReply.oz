@@ -1,3 +1,7 @@
+%%%%%%%%%%%%%%%%%%
+%% Copyright  Fred Spiessens  see www.evoluware.eu
+%%
+
 fun{CompareStr X Y}
    XX = {List.last {String.tokens X &>}} % example X : <OPTION VALUE="caretaker.10890737">(*) caretaker
    YY = {List.last {String.tokens Y &>}}

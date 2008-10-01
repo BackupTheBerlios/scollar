@@ -1,5 +1,6 @@
-%%
-% author : Fred Spiessens & Yves Jaradin
+%%%%%%%%%%%%%%%%%%
+%% Copyright  Fred Spiessens  & Yves Jaradin 
+%% see www.evoluware.eu
 % 
 %
 % changes 

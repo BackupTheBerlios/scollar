@@ -1,4 +1,6 @@
-%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%
+%% Copyright  Fred Spiessens  see www.evoluware.eu
+%%
 %
 % ScollarSearch provides a class Object whose instances forward to Search.object
 %

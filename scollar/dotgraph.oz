@@ -1,5 +1,6 @@
 %%%%%%%%%%%%%%%%%%
-%% Copyright  Fred Spiessens fredspiessens@skynet.be fred@evoluware.eu
+%% Copyright  Fred Spiessens  see www.evoluware.eu
+%%
 %% write dot-files from graph structures
 %% USE:
 %% GW = {New DotGraphWrapper init(nodeIds: NodeIdList

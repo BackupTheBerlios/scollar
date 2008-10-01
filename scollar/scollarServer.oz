@@ -1,3 +1,7 @@
+%%%%%%%%%%%%%%%%%%
+%% Copyright  Fred Spiessens  see www.evoluware.eu
+%%
+
 functor
 import
    Open FD Space OS % Application
