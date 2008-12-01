@@ -11,6 +11,7 @@ import
    ScollParser(scollParse:ScollParse toKernel:ToKernel) at 'scollparser.ozf'
    ScollarSearch at 'scollarSearch.ozf'
    Inspector(inspect:Inspect)
+   Application
    %ScollarProgress(newBar:NewBar) at 'scollarProgress.ozf'
 define
    %DataDir = '/ozdevel/scollar/data/'
@@ -96,7 +97,10 @@ define
       %{Inspect RequestAndData}
       Arguments = {String.tokens Request & }
       case Arguments
-      of ["check"] then {ReplyResult {CheckSyntax Data}}
+      of ["endOfProgram"] then
+	 try {ServerSocket shutDown}
+	 catch _ then skip end
+      [] ["check"] then {ReplyResult {CheckSyntax Data}}
       [] ["status"] then skip % status is given automatically
       [] ["fixpts"] then
 	 FixptCell := fixpoints(min:nil max:nil)
@@ -125,12 +129,6 @@ define
       end
    end
 
-   
-%    fun{ProcessControl ControlMsg}
-%       {ShowInfo 'inProcessControl'}
-%       @InterruptCell=unit
-%       "message arrived in Oz process OK\n"
-%    end
 
    fun{FixPts Pattern}
       Problem ParserMsg
@@ -140,6 +138,7 @@ define
       else
 	 MinFp MaxFp Err
       in
+	 %{Inspect Problem}
 	 try {CalculateFixpoints Problem MinFp MaxFp} 
 	 catch E then {Inspect E}
 	    Err = E
@@ -147,7 +146,7 @@ define
 	    try MaxFp = nil catch _ then skip end
 	 end
 	 if MinFp \= nil andthen MaxFp \= nil then FixptCell := fixpoints(min:MinFp max:MaxFp) end
- 	 %{Inspect @FixptCell}
+ 	 {Inspect @FixptCell}
 	 if {IsDet Err} then
 	    {ErrorMsg 'fixpoint calculation went wrong'(Err)}
 	 else try
@@ -223,15 +222,10 @@ define
       {Show 'Length Request'(L)}
       {Wait Request}
       {Process Request}
-%       if Reply == endOfCommunication
-%       then
-% 	 {RequestsSocket close}
-%       else {ReplyResult Reply}
-%       end
    end
 
 
-   proc{ServeControl} % only incoming
+   proc{ServeControl} % no longer only incoming
       ControlMsg
       L
    in
@@ -240,11 +234,16 @@ define
 				       len:L)}
       {Show 'Length Control Msg'(L)}
       {Wait ControlMsg}
+      {ControlSocket write(vs:"ack\n")}
+      {ControlSocket flush}
       if ControlMsg == "interrupt\n" then
 	 @InterruptCell = unit
-	%{ReportProgress {Pow 2 ProgressReportDepth}}
+	 {ServeControl}
+      else %if ControlMsg == "endOfProgram\n" then
+	 try {ControlSocket shutDown}
+	 catch _ then skip end
+	 {Application.exit 1}
       end
-      if ControlMsg \= "endOfControl\n" then {ServeControl} end
    end
 
 

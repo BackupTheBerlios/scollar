@@ -7,7 +7,7 @@
 % - 23-Dec-2006 fred : syntax now supports:may.do(B,X) in system rules
 % - 26-Nov-2007 fred : error msg now includes line and col numbers
 % - 26-Jun-2008 fred : "permission" replaced by "state"
-%
+% - 31-Oct-2008 fred : allow constants everywhere (nothing needed to be changed here!)
 %
 %
 %%%%%%%%%

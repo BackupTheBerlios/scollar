@@ -22,7 +22,7 @@
 %% INTEROPERATION: REMOVED
 %% 
 %% IN PROGRESS (from core_04.oz on):
-%% - REDUCING DATASTRUCTURE OVERHEAD;
+%% - REDUCING DATASTRUCTURE OVERHEAD
 %% - - what is 1 in minimal fixpt is always 1 (already works like this from first step)
 %% - - what is not 1 in maximal fixpt is always 0 (NO NEED TO MAKE SAFETY PROPERTIES OF IT)
 %% - - only the rest has to be searched for, and copied.
@@ -254,7 +254,7 @@ end
 
 %--- SORTING THE PREDICATES TO MINIMIZE UNNECCESSARY SEARCH AND RULE INSTANCE MUTLIPLICATION
 
-fun{MultipleIndex Pred Maxm ?NmbrOfMultiplications} % TODO : CHECK AND TEST ALTENATIVES
+fun{MultipleIndex Pred Maxm ?NmbrOfMultiplications} % TODO : CHECK AND TEST ALTERNATIVES
    %ASSUMING Max >= {Width Pred}
    Index     %eg: Max==3 Pred==iEmit(2 y 4) => Index = 0b1010 (first 1 from Max, second 1 from y not being integer)
              %eg: Max==3 Pred==access(2 4)  => Index = 0b1000 (last 0 is from Max being >= {Width Pred})
@@ -457,12 +457,17 @@ proc{Instantiate Rule Head Conf RuleHeadValue} % Head and all preds in Rule are 
                                               % Head is COMPLETELY instantiated clone of Rule.head !!
    % trying to allow implicit unification of parameters with same name in head is TOO LATE HERE !!
    % implicit unification has been taken care of in InstantiateDisjuction (see there)
-   Vars =  {Record.clone Rule.vars}  %Rule.vars is something like vars(x:x y:y z:z) for behavior rules and
-                                     % vars(x:_ y:_ z:_) for system rules
-                                     % TODO: this has changed. System rules should now also have vars like vars(x:x y:y z:z)
+   Vars =  {Record.map Rule.vars
+	    fun{$ Val} if {IsInt Val} then Val else _ end
+	    end
+	   }                         % Rule.vars is something like vars('X':'X' 'Y':'Y' '_1':'_1' alice:1)
+                                     % in other words, lowercase labels are associated with the id of the subject they indicate
+                                     % and they act as variables with a single-value domain.
+                                     % this is an adaptation to allow constants (subject names) in rules
    Body = {Map Rule.body 
-	   fun{$ ConditionPred} {Record.map ConditionPred fun{$ Atm} Vars.Atm end} end}
-   % now the fresh Body-to-be-instantiated contains fresh variables corresponding to those in the Rule.vars clone Vars
+	   fun{$ ConditionPred} {Record.map ConditionPred fun{$ Atm} Vars.Atm end}
+	   end}
+   % now the fresh Body-to-be-instantiated contains fresh variables and constants corresponding to those in the Rule.vars clone Vars
    Failed
 in
    try
@@ -470,12 +475,13 @@ in
             % now the body is maximally instantiated with subject ids from the head
             % BUT IF Rule.head CONTAINS TWICE THE SAME VARIABLE, THIS WOULD CAUSE FAILURE OF THE SPACE
             % INSTEAD IT SHOULD JUST CAUSE THE RULE TO FAIL DUE TO A BROKEN IMPLICIT EQUALITY CONDITION!
-            % THEREFOR WE DO THIS IN A try catch
+            % THEREFORE WE DO THIS IN A try catch
       Failed = false
-   catch Err then % WHAT ERROR SHOULD WE ACTUALLY CATCH ?
-      {ShowInfo "Failed Head unification in rule -->"}
-      {Show Err}
-      {ShowInfo "<-- Failed Head unification in rule"}
+   catch _ then % WHAT ERROR SHOULD WE ACTUALLY CATCH ?
+     %  this happens when a rule head has a constant in any place but the first e.g. cando(X,alice,Y)
+     % {ShowInfo "Failed Head unification in rule -->"}
+     % {Show Err}
+     % {ShowInfo "<-- Failed Head unification in rule"}
       Failed = true
    end 
    if Failed then
@@ -496,6 +502,7 @@ proc{InstantiateDisjunction Rules Head Conf CloseWorld PredValue}
    % Head.1 is subject's ID, and all other fields are instantiated too.
    % Rules can be nil
    % Head can be wrongly specified for some of the Rules e.g. 'did.get'(1 2 3) for ...=>'did.get'(A A B)
+   % and also for rules with constants : 'did.get'(1 2 3) for  ... => 'did.get'(2 A 4)  
    % We take care of that first
    RelevantRules = {Filter Rules fun{$ R} {TemplateMatchesInstance R.head Head} end} 
    RuleResults =  {FD.tuple '#' {Length RelevantRules} 0#1}  % RuleResults = '#' when RelevantRules == nil
@@ -557,8 +564,16 @@ in
      }
 end
 
+fun {RuleIsRelevantForSubject R Subj}
+   VarLabel = R.head.1
+in
+   {Not {IsInt R.vars.VarLabel}} orelse R.vars.VarLabel == Subj.id
+end
+
 proc{CleanUpRules Subj Conf  ?AlwaysLabels ?NeverLabels ?RulesToInstall}
-   AllRules = {Append Conf.system Subj.rules}
+   AllRules = {Filter {Append Conf.system Subj.rules}
+	       fun{$ R} {RuleIsRelevantForSubject R Subj} end
+	       }
    SubjectNonQueryNorInitLabels = {GetSubjectNonQueryNorInitLabels Subj Conf}
    CellNoChange = {NewCell false}
    CellRulesToInstall =  {NewCell AllRules}
@@ -580,13 +595,13 @@ in
       CellRulesToInstall := for R in @CellRulesToInstall collect:C do
 			       Head = R.head
 			       HeadLbl = {Label Head}
-			       HeadIsRegular = {Not {ImplicitUnificationInRuleHead R.head}}
+			       HeadIsRegular = {Not {ImplicitUnificationInRuleHead R.head R.vars}}
 			    in
 			    % {ShowInfo ">>>>> iteration start in CleanUpRules"}
-			       if {List.all R.body
-				   fun{$ Prd}
-				      HeadIsRegular andthen Head.1 == Prd.1 andthen {Member {Label Prd} @CellAlwaysLabels}
-				   end}  % works also when body == nil
+			       if HeadIsRegular andthen  {List.all R.body
+							  fun{$ Prd}
+							     Head.1 == Prd.1 andthen {Member {Label Prd} @CellAlwaysLabels}
+							   end}  % works also when body == nil
 			       then   % disregard the rule, it has an alwayslabel in its head
 				  CellNoChange := false
 				  if {Not {Member HeadLbl @CellAlwaysLabels}}
@@ -607,6 +622,7 @@ in
    AlwaysLabels = @CellAlwaysLabels
    NeverLabels = @CellNeverLabels
    RulesToInstall = @CellRulesToInstall
+   {Inspect 'AlwaysLabels'#AlwaysLabels}
    %{ShowInfo "<<<<<< iteration done in CleanUpRules"} 
 end
 
@@ -662,7 +678,7 @@ end
 %    InstallRules = @CellInstallRules
 %   % {ShowInfo "<<<<<< iteration done in CleanUpRules"} 
 % end
-proc {InstallSubjectRules Subj Conf} % will close the world by using disjunctive conditions, except when deriving query predicates
+proc{InstallSubjectRules Subj Conf} % will close the world by using disjunctive conditions, except when deriving query predicates
                               % detects always derived and never derived properties (the latter except for query predicates)
    AlwaysLabels NeverLabels RulesToInstall
    SubjectLabels = {GetAllSubjectPredLabels Subj}
@@ -699,7 +715,7 @@ in
    end
 end
 
-fun{TemplateMatchesInstance TemplPred InstPred}
+fun{TemplateMatchesInstance TemplPred InstPred} % adapted for use of constants in rules
    % e.g. TemplPred = 'did.get'(<N:Me> x  x)  InstPred = 'did.get'(1 1 1)  => true
    % e.g. TemplPred = 'did.get'(<N:Me> x  x)  InstPred = 'did.get'(2 2 4)  => false
    % simply try unification
@@ -852,23 +868,33 @@ fun{ExtractFeatures Rec Lst}  % returns Record with unique features in Lst and u
    end
 end
 
-fun{GlobalRuleToGlobal GR}  % give system rule its variables structure (fresh field variables)
-                            % GR should have only one pred in head   
+fun{GlobalRuleToGlobal GR NameToSubjId}  % give system rule its variables structure (fresh field variables)
+                                         % GR should have only one pred in head
+                                         % provide for constants
    Rule = {Record.adjoinAt GR vars {ExtractFeatures vars {Flatten {Record.toList GR.head}|
 							  {Map GR.body fun{$ C} {Record.toList C} end}}}}
-   {Record.forAllInd Rule.vars proc{$ I V} V=I end}  % TODO: this is new, to be similar to LocalRuleToGlobal. Is it OK?
+   {Record.forAllInd Rule.vars proc{$ I V}
+				  if {List.some {Record.arity NameToSubjId} fun{$ Nm} Nm==I end}
+				  then V=NameToSubjId.I
+				  else V=I
+				  end
+			       end}
 in
    Rule
 end
 
-fun{LocalRuleToGlobal LR}  % turn local behavior rule into global and give it its variables structure
-                           % then set the variable fields to the features
-                           % LR should have only one pred in head
+fun{LocalRuleToGlobal LR NameToSubjId}  % turn local behavior rule into global and give it its variables structure
+                                        % then set the variable fields to the features
+                                        % LR should have only one pred in head
    Rule =  rule(head: {LocalPredToGlobal LR.head}
 		body: {Map LR.body LocalPredToGlobal}
 		vars: {ExtractFeatures vars Me|{Flatten {Record.toList LR.head}|
 						{Map LR.body fun{$ C} {Record.toList C} end}}})
-   {Record.forAllInd Rule.vars proc{$ I V} V=I end}
+   {Record.forAllInd Rule.vars proc{$ I V}
+				  if {List.some {Record.arity NameToSubjId} fun{$ Nm} Nm==I end}
+				  then V=NameToSubjId.I
+				  else V=I
+				  end end}
 in
    Rule
 end
@@ -910,9 +936,9 @@ fun{ParseConfig Problem}
    AllSubjects = {List.toRecord '#' {Map Problem.subject fun{$ S} (S.name)#S end}}
    Conf = {NewConf {Width AllSubjects}}
    {GetSystemArities Problem Conf}
-   SysRules = {Map Problem.system GlobalRuleToGlobal}
    NameToSubjId = {List.toRecord '#'  {MapInd Problem.subject fun{$ I S} (S.name)#I end}}
    SubjIdToName =  {List.toRecord '#' {MapInd Problem.subject fun{$ I S} I#(S.name) end}}
+   SysRules = {Map Problem.system fun{$ Rule} {GlobalRuleToGlobal Rule NameToSubjId} end}
    fun{NamedPredToId Pred}
       {Record.map Pred fun{$ Nm} NameToSubjId.Nm end}
    end
@@ -923,7 +949,7 @@ fun{ParseConfig Problem}
       Nm = SubjIdToName.Id
       S = AllSubjects.Nm
       LocalRules = {GetRulesFor S}
-      SubjRules = {Map LocalRules LocalRuleToGlobal}
+      SubjRules = {Map LocalRules fun{$ Rule} {LocalRuleToGlobal Rule NameToSubjId} end}
       SubjInit = {Map {Filter Problem.config.facts
 		       fun{$ Fact} Fact.1 == S.name end}
 		  fun{$ Prd}
@@ -972,6 +998,8 @@ in
 		fun{$ Prd} {NamedPredToId Prd}
 		end}
    Conf.problem = Problem
+   {Inspect 'Problem'#Problem}
+   {Inspect 'Conf.system'#Conf.system}
    Conf.subjectNames = SubjIdToName
    Conf
 end
@@ -1027,7 +1055,7 @@ fun{GetAllSubjectPredLabels Subj}
     end}
 end
 
-fun{ImplicitUnificationInRuleHead RuleHead}
+fun{ImplicitUnificationInRuleHead RuleHead Vars} % returns true also when there is a constant in RuleHead
    Lst = {Map {Record.toList RuleHead}
 	  fun{$ X} if X=='_' then {NewName} else X end
 	  end}
@@ -1039,13 +1067,9 @@ fun{ImplicitUnificationInRuleHead RuleHead}
 		  end
       end
    end
-   Unif = {Check Lst}
+   HasConstant = {List.some Lst fun{$ X} {IsInt Vars.X} end}
 in
-%    {ShowInfo 'ImplicitUnificationInRuleHead -->'}
-%    {Show {Record.map RuleHead fun{$ X} if {IsDet X} then X else '_' end
-% 			      end}#Unif}
-%    {ShowInfo '<-- ImplicitUnificationInRuleHead'}
-   Unif
+   HasConstant orelse {Check Lst} 
 end
 
 fun{GetSubjectNonQueryNorInitLabels Subj Conf}
@@ -1212,7 +1236,7 @@ proc{CalculateFixpoints Problem ?MinFp ?MaxFp}
 in
    MinFp =  {SO getMinFixpt($)}
    MaxFp = {SO getMaxFixpt($)}
-   %{Inspect maxFp#MaxFp}
+   % {Inspect maxFp#MaxFp}
 end
 
 
