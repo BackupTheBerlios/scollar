@@ -622,7 +622,7 @@ in
    AlwaysLabels = @CellAlwaysLabels
    NeverLabels = @CellNeverLabels
    RulesToInstall = @CellRulesToInstall
-   {Inspect 'AlwaysLabels'#AlwaysLabels}
+   %{Inspect 'AlwaysLabels'#AlwaysLabels}
    %{ShowInfo "<<<<<< iteration done in CleanUpRules"} 
 end
 
@@ -998,8 +998,8 @@ in
 		fun{$ Prd} {NamedPredToId Prd}
 		end}
    Conf.problem = Problem
-   {Inspect 'Problem'#Problem}
-   {Inspect 'Conf.system'#Conf.system}
+   %{Inspect 'Problem'#Problem}
+   %{Inspect 'Conf.system'#Conf.system}
    Conf.subjectNames = SubjIdToName
    Conf
 end

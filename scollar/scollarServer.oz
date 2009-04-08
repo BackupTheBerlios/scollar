@@ -146,7 +146,7 @@ define
 	    try MaxFp = nil catch _ then skip end
 	 end
 	 if MinFp \= nil andthen MaxFp \= nil then FixptCell := fixpoints(min:MinFp max:MaxFp) end
- 	 {Inspect @FixptCell}
+ 	 %{Inspect @FixptCell}
 	 if {IsDet Err} then
 	    {ErrorMsg 'fixpoint calculation went wrong'(Err)}
 	 else try
